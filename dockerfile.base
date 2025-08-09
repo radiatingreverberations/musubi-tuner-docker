@@ -1,0 +1,77 @@
+FROM nvidia/cuda:12.8.1-devel-ubuntu24.04
+
+# Install required native build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3.12 python3.12-dev git \
+    libgl1 libglib2.0-0 \
+    && ln -s /usr/bin/python3.12 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+ADD https://github.com/astral-sh/uv/releases/download/0.8.6/uv-x86_64-unknown-linux-gnu.tar.gz /tmp/uv.tar.gz
+RUN tar -xzf /tmp/uv.tar.gz --strip-components=1 && \
+    mv uv /usr/local/bin/uv && \
+    rm -rf /tmp/uv.tar.gz
+
+# Configure uv cache to work with Docker BuildKit cache
+ENV UV_CACHE_DIR=/cache/uv
+ENV UV_LINK_MODE=copy
+
+# Set app dir
+WORKDIR /musubi
+ENV MUSUBI_HOME=/musubi
+
+# Prepare the virtual environment
+RUN uv venv venv
+
+# Install pytorch
+ARG TORCH_VERSION=2.7.0
+ARG TORCH_FLAVOR=cu128
+RUN --mount=type=cache,target=/cache/uv,sharing=locked \
+    . venv/bin/activate && \
+    uv pip install torch==${TORCH_VERSION} torchvision torchaudio torchsde --extra-index-url https://download.pytorch.org/whl/${TORCH_FLAVOR}
+
+# Allow cache invalidation of Musubi Tuner version even if the ref has not changed
+ARG REFRESH_MUSUBI=0
+
+# Additional dependencies
+RUN --mount=type=cache,target=/cache/uv,sharing=locked \
+    . venv/bin/activate && \
+    uv pip install \
+    protobuf \
+    six \
+    huggingface_hub[cli] \
+    huggingface_hub[hf_transfer]
+
+# Install Musubi Tuner
+ARG MUSUBI_VERSION=master
+ADD https://github.com/kohya-ss/musubi-tuner/archive/${MUSUBI_VERSION}.tar.gz /tmp/musubi.tar.gz
+RUN mkdir -p /musubi && \
+    tar -xzf /tmp/musubi.tar.gz -C /musubi --strip-components=1 && \
+    rm -rf /tmp/musubi.tar.gz
+
+# Install remaining Musubi Tuner version specific dependencies
+RUN --mount=type=cache,target=/cache/uv,sharing=locked \
+    . venv/bin/activate && \
+    uv pip install -e .
+
+# Copy project helper scripts (kept separate from upstream /musubi tree)
+ENV MUSUBI_SCRIPTS_DIR=/opt/musubi-scripts
+COPY scripts/ ${MUSUBI_SCRIPTS_DIR}/scripts/
+COPY wan2.2/ ${MUSUBI_SCRIPTS_DIR}/wan2.2/
+COPY wan2.2-i2v/ ${MUSUBI_SCRIPTS_DIR}/wan2.2-i2v/
+RUN chmod +x ${MUSUBI_SCRIPTS_DIR}/scripts/*.sh ${MUSUBI_SCRIPTS_DIR}/wan2.2/*.sh ${MUSUBI_SCRIPTS_DIR}/wan2.2-i2v/*.sh && \
+    for f in ${MUSUBI_SCRIPTS_DIR}/wan2.2/*.sh ${MUSUBI_SCRIPTS_DIR}/wan2.2-i2v/*.sh; do \
+        install -m 0755 "${f}" /usr/local/bin/"$(basename "$f")"; \
+    done
+
+# Enable unbuffered output for Python
+ENV PYTHONUNBUFFERED=1
+
+# Add entrypoint script
+COPY entrypoint.base.sh entrypoint.base.sh
+RUN sed -i 's/\r$//' entrypoint.base.sh
+RUN chmod +x entrypoint.base.sh
+
+ENTRYPOINT ["./entrypoint.base.sh"]
