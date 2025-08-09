@@ -59,13 +59,13 @@ RUN --mount=type=cache,target=/cache/uv,sharing=locked \
 
 # Copy project helper scripts
 ENV MUSUBI_SCRIPTS_DIR=/opt/musubi-scripts
-COPY scripts/ ${MUSUBI_SCRIPTS_DIR}/scripts/
-COPY wan2.2/*.sh ${MUSUBI_SCRIPTS_DIR}/scripts/
-COPY wan2.2-i2v/*.sh ${MUSUBI_SCRIPTS_DIR}/scripts/
-COPY wan2.2-t2v/*.sh ${MUSUBI_SCRIPTS_DIR}/scripts/
+COPY scripts/ ${MUSUBI_SCRIPTS_DIR}/
+COPY wan2.2/*.sh ${MUSUBI_SCRIPTS_DIR}/
+COPY wan2.2-i2v/*.sh ${MUSUBI_SCRIPTS_DIR}/
+COPY wan2.2-t2v/*.sh ${MUSUBI_SCRIPTS_DIR}/
 RUN set -e; \
-    chmod +x ${MUSUBI_SCRIPTS_DIR}/scripts/*.sh; \
-    for f in ${MUSUBI_SCRIPTS_DIR}/scripts/*.sh; do \
+    chmod +x ${MUSUBI_SCRIPTS_DIR}/*.sh; \
+    for f in ${MUSUBI_SCRIPTS_DIR}/*.sh; do \
         ln -sf "$f" /usr/local/bin/"$(basename "$f")"; \
     done
 

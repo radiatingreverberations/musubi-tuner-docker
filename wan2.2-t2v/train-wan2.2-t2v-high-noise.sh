@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-source "$MUSUBI_SCRIPTS_DIR/scripts/env.sh"
+source "$MUSUBI_SCRIPTS_DIR/env.sh"
 
 accelerate launch --num_cpu_threads_per_process 1 "$MUSUBI_HOME/src/musubi_tuner/wan_train_network.py" \
     --task t2v-A14B \

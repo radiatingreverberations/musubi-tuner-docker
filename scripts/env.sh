@@ -1,11 +1,11 @@
 #!/bin/bash
 # Shared environment bootstrap for musubi tuner scripts.
-# Sets BASE_DIR to $MUSUBI_HOME if defined, else repository root (directory containing this file's parent).
+# Sets BASE_DIR to $MUSUBI_HOME if defined, else repository root.
 set -euo pipefail
 
-# Resolve repo root as the parent directory of this script's directory (scripts/ ..)
+# Resolve repo root as the parent of this script's directory.
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")"/.. && pwd)"
-: "${MUSUBI_HOME:=}"  # ensure variable is defined (may be empty)
+: "${MUSUBI_HOME:=}"  # ensure variable is defined
 if [[ -n "$MUSUBI_HOME" ]]; then
   BASE_DIR="${MUSUBI_HOME}"
 else
