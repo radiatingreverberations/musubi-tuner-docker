@@ -1,0 +1,17 @@
+name: Rebuild on Musubi Tuner main branch changes
+
+on:
+  schedule:
+    - cron: "10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  check-musubi-main:
+    uses: ./.github/workflows/check-musubi.yml
+    with:
+      musubi_ref: main
+      image_label: main
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit

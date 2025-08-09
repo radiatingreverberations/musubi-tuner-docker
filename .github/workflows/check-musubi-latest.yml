@@ -1,0 +1,31 @@
+name: Rebuild on Musubi Tuner latest release changes
+
+on:
+  schedule:
+    - cron: "20 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  get-musubi-latest-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.fetch.outputs.release }}
+    steps:
+      - name: Get latest release
+        id: fetch
+        uses: pozetroninc/github-action-get-latest-release@v0.8.0
+        with:
+          owner: kohya-ss
+          repo: musubi-tuner
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  check-musubi-latest:
+    needs: get-musubi-latest-release
+    uses: ./.github/workflows/check-musubi.yml
+    with:
+      musubi_ref: ${{ needs.get-musubi-latest-release.outputs.tag }}
+      image_label: latest
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit

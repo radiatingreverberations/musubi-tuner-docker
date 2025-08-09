@@ -2,20 +2,13 @@ variable "DOCKER_REGISTRY_URL" {
     default = ""
 }
 variable "MUSUBI_VERSION" {
-    default = "master"
+    default = "main"
 }
 variable "IMAGE_LABEL" {
-    default = "latest"
-    validation {
-        condition     = IMAGE_LABEL == "latest" || IMAGE_LABEL == "master"
-        error_message = "The variable 'IMAGE_LABEL' must be 'latest' or 'master'."
-  }
-}
-variable "BASE_FLAVOR" {
-    default = "nvidia"
-    validation {
-        condition     = BASE_FLAVOR == "nvidia" || BASE_FLAVOR == "cpu" || BASE_FLAVOR == "amd"
-        error_message = "The variable 'BASE_FLAVOR' must be 'nvidia' or 'cpu' or 'amd'."
+        default = "latest"
+        validation {
+                condition     = IMAGE_LABEL == "latest" || IMAGE_LABEL == "main"
+                error_message = "The variable 'IMAGE_LABEL' must be 'latest' or 'main'."
     }
 }
 

@@ -1,0 +1,16 @@
+name: Trigger Musubi Tuner builds on pull requests to main
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-pull-request:
+    uses: ./.github/workflows/build-docker.yml
+    with:
+      musubi_ref: main
+      image_label: main
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit

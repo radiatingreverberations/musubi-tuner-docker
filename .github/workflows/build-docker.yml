@@ -1,0 +1,71 @@
+name: Build and push Musubi Tuner Docker images
+
+on:
+  workflow_call:
+    inputs:
+      musubi_ref:
+        description: "Musubi Tuner branch or tag to build from"
+        required: true
+        type: string
+      image_label:
+        description: "Label to apply to the built image"
+        required: true
+        type: string
+      bake_target:
+        description: "Docker Bake target to build"
+        required: false
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  DOCKER_REGISTRY_URL: ghcr.io/${{ github.repository_owner }}/
+  IMAGE_LABEL: ${{ inputs.image_label }}
+  MUSUBI_VERSION: ${{ inputs.musubi_ref }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+  # Single flavor (nvidia) currently supported; no matrix needed
+
+    steps:
+      - name: Pre-create BuildKit volume on /mnt
+        run: |
+          sudo mkdir -p /mnt/buildkit-state
+          sudo docker volume create \
+            --driver local \
+            --opt type=none \
+            --opt device=/mnt/buildkit-state \
+            --opt o=bind \
+            buildx_buildkit_ci0_state
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          name: ci
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch Musubi Tuner commit SHA
+        id: musubi_ref
+        run: |
+          sha=$(git ls-remote https://github.com/kohya-ss/musubi-tuner.git ${{ inputs.musubi_ref }} | cut -f1)
+          echo "sha=$sha" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/bake-action@v6
+        with:
+          push: ${{ github.event_name != 'pull_request' }}
+          set: |
+            *.labels.musubi.ref=${{ inputs.musubi_ref }}
+            *.labels.musubi.sha=${{ steps.musubi_ref.outputs.sha }}
+          targets: ${{ inputs.bake_target || 'default' }}

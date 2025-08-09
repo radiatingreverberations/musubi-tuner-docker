@@ -1,0 +1,71 @@
+name: Rebuild on Musubi Tuner changes
+
+on:
+  workflow_call:
+    inputs:
+      musubi_ref:
+        description: "Musubi Tuner branch or tag to check"
+        required: true
+        type: string
+      image_label:
+        description: "Image label to compare against"
+        required: true
+        type: string
+
+jobs:
+  check-musubi:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+      musubi_sha: ${{ steps.musubi.outputs.sha }}
+
+    steps:
+      - name: Install skopeo + jq + gh
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y skopeo jq gh
+
+      - name: Get HEAD of Musubi Tuner
+        id: musubi
+        run: |
+          sha=$(git ls-remote https://github.com/kohya-ss/musubi-tuner.git ${{ inputs.musubi_ref }} | cut -f1)
+          echo "Musubi Tuner SHA: $sha"
+          echo "sha=$sha" >>"$GITHUB_OUTPUT"
+
+      - name: Get musubi.sha label from latest built image
+        id: current
+        run: |
+          image="ghcr.io/${{ github.repository_owner }}/musubi-tuner:${{ inputs.image_label }}"
+          if skopeo inspect docker://"$image" >/dev/null 2>&1; then
+            last=$(skopeo inspect docker://"$image" \
+                     | jq -r '.Labels["musubi.sha"] // empty')
+          else
+            last=""        # tag doesn't exist
+          fi
+          echo "Current image SHA: $last"
+          echo "sha=$last" >>"$GITHUB_OUTPUT"
+
+      - name: Decide whether to rebuild
+        id: compare
+        run: |
+          if [ -n "${{ steps.current.outputs.sha }}" ] && \
+             [ "${{ steps.musubi.outputs.sha }}" != "${{ steps.current.outputs.sha }}" ]; then
+            echo "changed=true"  >>"$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+          fi
+
+  build-docker:
+    needs: check-musubi
+    if: needs.check-musubi.outputs.changed == 'true'
+    concurrency:
+      group: build-${{ inputs.image_label }}
+      cancel-in-progress: false
+    uses: ./.github/workflows/build-docker.yml
+    with:
+      musubi_ref: ${{ inputs.musubi_ref }}
+      image_label: ${{ inputs.image_label }}
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit

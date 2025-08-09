@@ -1,0 +1,62 @@
+name: Trigger Musubi Tuner builds on new commits to main
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  get-musubi-latest-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.fetch.outputs.release }}
+    steps:
+      - name: Get Musubi Tuner latest release
+        id: fetch
+        uses: pozetroninc/github-action-get-latest-release@v0.8.0
+        with:
+          owner: kohya-ss
+          repo: musubi-tuner
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  build-base:
+    concurrency:
+      group: build-base
+      cancel-in-progress: true
+    uses: ./.github/workflows/build-docker.yml
+    with:
+      musubi_ref: main
+      image_label: main
+      bake_target: base
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+
+  build-musubi-main:
+    needs: build-base
+    concurrency:
+      group: build-main
+      cancel-in-progress: true
+    uses: ./.github/workflows/build-docker.yml
+    with:
+      musubi_ref: main
+      image_label: main
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+
+  build-musubi-latest-release:
+    needs: [get-musubi-latest-release, build-base]
+    concurrency:
+      group: build-latest
+      cancel-in-progress: true
+    uses: ./.github/workflows/build-docker.yml
+    with:
+      musubi_ref: ${{ needs.get-musubi-latest-release.outputs.tag }}
+      image_label: latest
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
