@@ -24,8 +24,8 @@ target "base" {
     args = {
         MUSUBI_VERSION = "${MUSUBI_VERSION}"
     }
-    tags       = ["${DOCKER_REGISTRY_URL}musubi-tuner:latest"]
+    tags       = ["${DOCKER_REGISTRY_URL}musubi-tuner:${IMAGE_LABEL}"]
     platforms = [ "linux/amd64" ]
-    cache-from = ["type=registry,ref=${DOCKER_REGISTRY_URL}musubi-tuner:latest"]
+    cache-from = ["type=registry,ref=${DOCKER_REGISTRY_URL}musubi-tuner:${IMAGE_LABEL}"]
     cache-to   = ["type=inline"]
 }
