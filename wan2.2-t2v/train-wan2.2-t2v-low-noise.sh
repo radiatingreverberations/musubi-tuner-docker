@@ -4,7 +4,7 @@ set -euo pipefail
 source "$MUSUBI_SCRIPTS_DIR/scripts/env.sh"
 
 accelerate launch --num_cpu_threads_per_process 1 "$MUSUBI_HOME/src/musubi_tuner/wan_train_network.py" \
-    --task i2v-A14B \
+    --task t2v-A14B \
     --dit "$BASE_DIR/models/diffusion_models/wan2.2_t2v_low_noise_14B_fp16.safetensors" \
     --vae "$BASE_DIR/models/vae/wan_2.1_vae.safetensors" \
     --t5 "$BASE_DIR/models/text_encoders/models_t5_umt5-xxl-enc-bf16.pth" \

@@ -12,13 +12,13 @@ SUBDIR="diffusion_models"
 
 python "$MUSUBI_SCRIPTS_DIR/scripts/download_models.py" \
 	--hf Comfy-Org/Wan_2.2_ComfyUI_Repackaged \
-	--file split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp16.safetensors \
+	--file split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp16.safetensors \
 	--base-dir "$BASE_DIR/models" \
 	--output-dir "$SUBDIR"
 
 python "$MUSUBI_SCRIPTS_DIR/scripts/download_models.py" \
 	--hf Comfy-Org/Wan_2.2_ComfyUI_Repackaged \
-	--file split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp16.safetensors \
+	--file split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp16.safetensors \
 	--base-dir "$BASE_DIR/models" \
 	--output-dir "$SUBDIR"
 

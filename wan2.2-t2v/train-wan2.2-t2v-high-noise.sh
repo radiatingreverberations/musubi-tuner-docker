@@ -4,8 +4,8 @@ set -euo pipefail
 source "$MUSUBI_SCRIPTS_DIR/scripts/env.sh"
 
 accelerate launch --num_cpu_threads_per_process 1 "$MUSUBI_HOME/src/musubi_tuner/wan_train_network.py" \
-    --task i2v-A14B \
-    --dit "$BASE_DIR/models/diffusion_models/wan2.2_t2v_low_noise_14B_fp16.safetensors" \
+    --task t2v-A14B \
+    --dit "$BASE_DIR/models/diffusion_models/wan2.2_t2v_high_noise_14B_fp16.safetensors" \
     --vae "$BASE_DIR/models/vae/wan_2.1_vae.safetensors" \
     --t5 "$BASE_DIR/models/text_encoders/models_t5_umt5-xxl-enc-bf16.pth" \
     --dataset_config "$BASE_DIR/dataset/dataset.toml" \
@@ -31,10 +31,10 @@ accelerate launch --num_cpu_threads_per_process 1 "$MUSUBI_HOME/src/musubi_tuner
     --lr_scheduler_power 8 \
     --lr_scheduler_min_lr_ratio="5e-5" \
     --output_dir "$BASE_DIR/output" \
-    --output_name WAN2.2-LowNoise_SmartphoneSnapshotPhotoReality_v3_by-AI_Characters \
-    --metadata_title WAN2.2-LowNoise_SmartphoneSnapshotPhotoReality_v3_by-AI_Characters \
+    --output_name WAN2.2-HighNoise_SmartphoneSnapshotPhotoReality_v3_by-AI_Characters \
+    --metadata_title WAN2.2-HighNoise_SmartphoneSnapshotPhotoReality_v3_by-AI_Characters \
     --metadata_author AI_Characters \
     --preserve_distribution_shape \
-    --min_timestep 0 \
-    --max_timestep 875 \
+    --min_timestep 875 \
+    --max_timestep 1000 \
     --blocks_to_swap 1

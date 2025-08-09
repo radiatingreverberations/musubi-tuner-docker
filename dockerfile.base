@@ -5,6 +5,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3.12 python3.12-dev git \
     libgl1 libglib2.0-0 \
+    openssh-client \
     && ln -s /usr/bin/python3.12 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
@@ -30,7 +31,7 @@ ARG TORCH_VERSION=2.7.0
 ARG TORCH_FLAVOR=cu128
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     . venv/bin/activate && \
-    uv pip install torch==${TORCH_VERSION} torchvision torchaudio torchsde --extra-index-url https://download.pytorch.org/whl/${TORCH_FLAVOR}
+    uv pip install torch==${TORCH_VERSION} torchvision xformers sageattention --extra-index-url https://download.pytorch.org/whl/${TORCH_FLAVOR}
 
 # Allow cache invalidation of Musubi Tuner version even if the ref has not changed
 ARG REFRESH_MUSUBI=0
@@ -56,15 +57,21 @@ RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     . venv/bin/activate && \
     uv pip install -e .
 
-# Copy project helper scripts (kept separate from upstream /musubi tree)
+# Copy project helper scripts
 ENV MUSUBI_SCRIPTS_DIR=/opt/musubi-scripts
 COPY scripts/ ${MUSUBI_SCRIPTS_DIR}/scripts/
-COPY wan2.2/ ${MUSUBI_SCRIPTS_DIR}/wan2.2/
-COPY wan2.2-i2v/ ${MUSUBI_SCRIPTS_DIR}/wan2.2-i2v/
-RUN chmod +x ${MUSUBI_SCRIPTS_DIR}/scripts/*.sh ${MUSUBI_SCRIPTS_DIR}/wan2.2/*.sh ${MUSUBI_SCRIPTS_DIR}/wan2.2-i2v/*.sh && \
-    for f in ${MUSUBI_SCRIPTS_DIR}/wan2.2/*.sh ${MUSUBI_SCRIPTS_DIR}/wan2.2-i2v/*.sh; do \
-        install -m 0755 "${f}" /usr/local/bin/"$(basename "$f")"; \
+COPY wan2.2/*.sh ${MUSUBI_SCRIPTS_DIR}/scripts/
+COPY wan2.2-i2v/*.sh ${MUSUBI_SCRIPTS_DIR}/scripts/
+COPY wan2.2-t2v/*.sh ${MUSUBI_SCRIPTS_DIR}/scripts/
+RUN set -e; \
+    chmod +x ${MUSUBI_SCRIPTS_DIR}/scripts/*.sh; \
+    for f in ${MUSUBI_SCRIPTS_DIR}/scripts/*.sh; do \
+        ln -sf "$f" /usr/local/bin/"$(basename "$f")"; \
     done
+
+# Provide a default Accelerate configuration
+RUN mkdir -p /root/.cache/huggingface/accelerate
+COPY accelerate_config.yaml /root/.cache/huggingface/accelerate/default_config.yaml
 
 # Enable unbuffered output for Python
 ENV PYTHONUNBUFFERED=1
