@@ -67,4 +67,5 @@ Adjust hyperparameters inside the scripts (learning rate, epochs, network_dim, e
 
 ## Credits
 
-Based on this [WAN2.2 LoRa training workflow](https://civitai.com/articles/17740) by [AI_Characters](https://civitai.com/user/AI_Characters).
+* Initially based on [WAN2.2 LoRa training workflow](https://civitai.com/articles/17740) by [AI_Characters](https://civitai.com/user/AI_Characters).
+* Parameters guided by [My Personally Training Experience of WAN:Starting with Data](https://civitai.com/articles/16936/my-personally-training-experience-of-wanstarting-with-data) by [_GhostInShell_](https://civitai.com/user/_GhostInShell_)

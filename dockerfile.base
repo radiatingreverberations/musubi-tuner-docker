@@ -58,15 +58,15 @@ RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     . venv/bin/activate && \
     uv pip install -e .
 
-# Copy project helper scripts
+# Copy project helper scripts and Python utilities
 ENV MUSUBI_SCRIPTS_DIR=/opt/musubi-scripts
 COPY scripts/ ${MUSUBI_SCRIPTS_DIR}/
-COPY wan2.2/*.sh ${MUSUBI_SCRIPTS_DIR}/
-COPY wan2.2-i2v/*.sh ${MUSUBI_SCRIPTS_DIR}/
-COPY wan2.2-t2v/*.sh ${MUSUBI_SCRIPTS_DIR}/
+COPY download_models.py ${MUSUBI_SCRIPTS_DIR}/
+
+# Make shell scripts + python utilities executable and symlink into PATH
 RUN set -e; \
-    chmod +x ${MUSUBI_SCRIPTS_DIR}/*.sh; \
-    for f in ${MUSUBI_SCRIPTS_DIR}/*.sh; do \
+    find "${MUSUBI_SCRIPTS_DIR}" -type f \( -name '*.sh' -o -name 'download_models.py' \) -print0 | while IFS= read -r -d '' f; do \
+        chmod +x "$f"; \
         ln -sf "$f" /usr/local/bin/"$(basename "$f")"; \
     done
 

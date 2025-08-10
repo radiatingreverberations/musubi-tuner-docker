@@ -7,22 +7,22 @@ into a flat output directory, discarding any intermediate path components.
 
 Examples:
     # Hugging Face repo file (keep only basename in output dir)
-    python scripts/download_models.py \
-            --hf Comfy-Org/Wan_2.1_ComfyUI_repackaged \
-            --file split_files/vae/wan_2.1_vae.safetensors \
-            --output-dir models/vae
+    python download_models.py \
+        --hf Comfy-Org/Wan_2.1_ComfyUI_repackaged \
+        --file split_files/vae/wan_2.1_vae.safetensors \
+        --output-dir models/vae
 
     # Specific revision
-    python scripts/download_models.py \
-            --hf Comfy-Org/Wan_2.2_ComfyUI_Repackaged \
-            --rev main \
-            --file split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp16.safetensors \
-            --output-dir models/diffusion_models
+    python download_models.py \
+        --hf Comfy-Org/Wan_2.2_ComfyUI_Repackaged \
+        --rev main \
+        --file split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp16.safetensors \
+        --output-dir models/diffusion_models
 
     # Direct URL
-    python scripts/download_models.py \
-            --url https://example.com/path/model.bin \
-            --output-dir models/extras
+    python download_models.py \
+        --url https://example.com/path/model.bin \
+        --output-dir models/extras
 
 Destination name rules:
     - By default the basename of the source file/URL path is used.
