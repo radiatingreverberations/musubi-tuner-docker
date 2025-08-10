@@ -9,7 +9,6 @@ accelerate launch --num_cpu_threads_per_process 1 "$MUSUBI_HOME/src/musubi_tuner
     --vae "$BASE_DIR/models/vae/wan_2.1_vae.safetensors" \
     --t5 "$BASE_DIR/models/text_encoders/models_t5_umt5-xxl-enc-bf16.pth" \
     --dataset_config "$BASE_DIR/dataset/dataset.toml" \
-    --xformers \
     --mixed_precision fp16 \
     --fp8_base \
     --optimizer_type adamw \

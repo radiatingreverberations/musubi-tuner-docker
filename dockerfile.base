@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.8.1-devel-ubuntu24.04
+FROM nvidia/cuda:12.9.1-runtime-ubuntu24.04
 
 # Install required native build dependencies
 RUN apt-get update && \
@@ -27,11 +27,11 @@ ENV MUSUBI_HOME=/musubi
 RUN uv venv venv
 
 # Install pytorch
-ARG TORCH_VERSION=2.7.0
-ARG TORCH_FLAVOR=cu128
+ARG TORCH_VERSION=2.8.0
+ARG TORCH_FLAVOR=cu129
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     . venv/bin/activate && \
-    uv pip install torch==${TORCH_VERSION} torchvision xformers sageattention --extra-index-url https://download.pytorch.org/whl/${TORCH_FLAVOR}
+    uv pip install torch==${TORCH_VERSION} torchvision sageattention --extra-index-url https://download.pytorch.org/whl/${TORCH_FLAVOR}
 
 # Allow cache invalidation of Musubi Tuner version even if the ref has not changed
 ARG REFRESH_MUSUBI=0
@@ -42,6 +42,7 @@ RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     uv pip install \
     protobuf \
     six \
+    wandb \
     huggingface_hub[cli] \
     huggingface_hub[hf_transfer]
 
