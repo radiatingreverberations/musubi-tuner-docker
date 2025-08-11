@@ -1,44 +1,15 @@
-FROM nvidia/cuda:12.9.1-runtime-ubuntu24.04
-
-# Install required native build dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    python3.12 python3.12-dev git \
-    libgl1 libglib2.0-0 \
-    openssh-client \
-    && ln -s /usr/bin/python3.12 /usr/bin/python \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install uv
-ADD https://github.com/astral-sh/uv/releases/download/0.8.6/uv-x86_64-unknown-linux-gnu.tar.gz /tmp/uv.tar.gz
-RUN tar -xzf /tmp/uv.tar.gz --strip-components=1 && \
-    mv uv /usr/local/bin/uv && \
-    rm -rf /tmp/uv.tar.gz
-
-# Configure uv cache to work with Docker BuildKit cache
-ENV UV_CACHE_DIR=/cache/uv
-ENV UV_LINK_MODE=copy
+FROM ghcr.io/radiatingreverberations/comfyui-ssh:latest
 
 # Set app dir
 WORKDIR /musubi
 ENV MUSUBI_HOME=/musubi
-
-# Prepare the virtual environment
-RUN uv venv venv
-
-# Install pytorch
-ARG TORCH_VERSION=2.8.0
-ARG TORCH_FLAVOR=cu129
-RUN --mount=type=cache,target=/cache/uv,sharing=locked \
-    . venv/bin/activate && \
-    uv pip install torch==${TORCH_VERSION} torchvision sageattention --extra-index-url https://download.pytorch.org/whl/${TORCH_FLAVOR}
 
 # Allow cache invalidation of Musubi Tuner version even if the ref has not changed
 ARG REFRESH_MUSUBI=0
 
 # Additional dependencies
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
-    . venv/bin/activate && \
+    . /comfyui/venv/bin/activate && \
     uv pip install \
     protobuf \
     six \
@@ -55,7 +26,7 @@ RUN mkdir -p /musubi && \
 
 # Install remaining Musubi Tuner version specific dependencies
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
-    . venv/bin/activate && \
+    . /comfyui/venv/bin/activate && \
     uv pip install -e .
 
 # Copy project helper scripts and Python utilities
@@ -63,12 +34,11 @@ ENV MUSUBI_SCRIPTS_DIR=/opt/musubi-scripts
 COPY scripts/ ${MUSUBI_SCRIPTS_DIR}/
 COPY download_models.py ${MUSUBI_SCRIPTS_DIR}/
 
-# Make shell scripts + python utilities executable and symlink into PATH
+# Normalize line endings, make scripts executable and symlink into PATH
+ENV PATH="${MUSUBI_SCRIPTS_DIR}:$PATH"
 RUN set -e; \
-    find "${MUSUBI_SCRIPTS_DIR}" -type f \( -name '*.sh' -o -name 'download_models.py' \) -print0 | while IFS= read -r -d '' f; do \
-        chmod +x "$f"; \
-        ln -sf "$f" /usr/local/bin/"$(basename "$f")"; \
-    done
+    find "${MUSUBI_SCRIPTS_DIR}" -type f -name '*.sh' -exec sed -i 's/\r$//' {} +; \
+    bash -c 'shopt -s nullglob; for f in $(find "${MUSUBI_SCRIPTS_DIR}" -type f \( -name "*.sh" -o -name "download_models.py" \)); do chmod +x "$f"; ln -sf "$f" /usr/local/bin/"$(basename "$f")"; done'
 
 # Provide a default Accelerate configuration
 RUN mkdir -p /root/.cache/huggingface/accelerate

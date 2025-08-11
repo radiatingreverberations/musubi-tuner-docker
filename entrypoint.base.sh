@@ -2,7 +2,7 @@
 set -e
 
 # Activate virtual environment
-source venv/bin/activate
+source /comfyui/venv/bin/activate
 
 # Drop into a shell
 bash "$@"
