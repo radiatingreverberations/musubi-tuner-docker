@@ -1,4 +1,4 @@
-FROM ghcr.io/radiatingreverberations/comfyui-ssh:latest
+FROM ghcr.io/radiatingreverberations/comfyui-base:nvidia
 
 # Set app dir
 WORKDIR /musubi
