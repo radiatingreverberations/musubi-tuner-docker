@@ -43,7 +43,7 @@ python "$SCRIPTS_DIR/download_models.py" \
     "${download_args[@]}"
 
 python "$SCRIPTS_DIR/download_models.py" \
-    --hf Comfy-Org/Qwen-Image-Edit_ComfyUI \
+    --hf Comfy-Org/Qwen-Image_ComfyUI \
     --file split_files/vae/qwen_image_vae.safetensors \
     --base-dir "$BASE_DIR/models" \
     --output-dir vae \
