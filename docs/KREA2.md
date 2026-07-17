@@ -40,12 +40,15 @@ fetching the model weights.
 Create the character dataset directories and editable configuration files:
 
 ```shell
-init-krea2-character.sh
+init-krea2-character.sh --trigger "k2v9 person"
 ```
 
-Initialization is safe to rerun: existing files are reported and preserved.
-The generated layout stays inside the already-mounted `dataset` and `output`
-directories:
+Choose a unique trigger plus generic class and pass them together, for example
+`mira7 person`. Without `--trigger`, initialization uses `k2v9 person` for a
+new `samples.txt`. Initialization is safe to rerun: existing files are reported
+and preserved unless `--trigger` is explicitly supplied, in which case the
+detected trigger in `samples.txt` is updated atomically. The generated layout
+stays inside the already-mounted `dataset` and `output` directories:
 
 ```text
 dataset/krea2/
@@ -81,11 +84,32 @@ images/002.jpg
 images/002.txt
 ```
 
-Choose a unique trigger plus generic class, such as `k2v9 person`, and use it
-consistently in every training caption. Edit `dataset/krea2/samples.txt` to use
-the same trigger. Caption visible variable attributes such as clothing,
-hairstyle, pose, lighting, framing, and background so they do not silently
-bind to the identity.
+Use the same trigger and class in every primary training caption. Caption
+visible variable attributes such as clothing, hairstyle, pose, lighting,
+framing, and background so they do not silently bind to the identity.
+
+During preparation, the `# trigger:` header in `samples.txt` is treated as the
+source of truth. Every active sample prompt and every caption in the first
+configured image dataset must contain that exact phrase. A sample immediately
+following `# trigger-check: allow-next` is exempt, which preserves the bundled
+trigger-free leakage-control preview. Optional regularization datasets are
+still checked for missing files, but their captions are deliberately excluded
+from trigger validation. Legacy sample templates are recognized through their
+original `Replace every occurrence of ...` comment.
+
+The bundled preview prompts are medium-neutral: they vary framing, viewpoint,
+pose, clothing, and setting without requiring photography, realism, or a
+specific illustration style. They can therefore be used for photographic,
+anime, and other character LoRAs, or replaced with prompts tailored to the
+dataset's intended style.
+
+For an unusual workflow, override only the validation value or disable the
+trigger check explicitly:
+
+```shell
+prepare-krea2-character.sh --trigger "mira7 person"
+prepare-krea2-character.sh --skip-trigger-check
+```
 
 Thirty curated 1024x1024 images are already a strong dataset shape for these
 presets. The shared dataset config keeps native 1024 buckets and disables

@@ -1,16 +1,18 @@
-# Replace every occurrence of "k2v9 person" with your chosen trigger and class.
+# trigger: __KREA2_TRIGGER__
+# Run init-krea2-character.sh --trigger "token class" to update this file.
 # Turbo preview settings: 1024x1024, 8 steps, CFG off, and fixed seeds.
 
-A neutral close head-and-shoulders studio portrait of k2v9 person, facing the camera, natural skin texture, soft even daylight, plain pale background. --w 1024 --h 1024 --s 8 --l 1 --d 42
+A neutral close head-and-shoulders portrait of __KREA2_TRIGGER__, facing forward, calm expression, clear facial features, soft even lighting, plain background. --w 1024 --h 1024 --s 8 --l 1 --d 42
 
-A three-quarter portrait of k2v9 person looking slightly past the camera, calm expression, soft window light, realistic photography. --w 1024 --h 1024 --s 8 --l 1 --d 43
+A three-quarter-view portrait of __KREA2_TRIGGER__, looking slightly to one side, relaxed expression, different clothing, simple setting. --w 1024 --h 1024 --s 8 --l 1 --d 43
 
-A half-body candid photograph of k2v9 person seated at an outdoor cafe, different casual clothing, overcast daylight, shallow depth of field. --w 1024 --h 1024 --s 8 --l 1 --d 44
+A half-body scene of __KREA2_TRIGGER__ seated at an outdoor cafe, different casual clothing, natural pose, uncluttered surroundings. --w 1024 --h 1024 --s 8 --l 1 --d 44
 
-A full-body photograph of k2v9 person standing in a modern interior, entirely different outfit, relaxed neutral pose, natural proportions. --w 1024 --h 1024 --s 8 --l 1 --d 45
+A full-body view of __KREA2_TRIGGER__ standing in a modern interior, entirely different outfit, relaxed neutral pose, balanced proportions. --w 1024 --h 1024 --s 8 --l 1 --d 45
 
-An editorial ink-and-watercolor illustration of k2v9 person, recognizable facial identity, simplified background, expressive but controlled style. --w 1024 --h 1024 --s 8 --l 1 --d 46
+An expressive portrait of __KREA2_TRIGGER__ in a different setting, recognizable identity, clear silhouette, controlled details, simple background. --w 1024 --h 1024 --s 8 --l 1 --d 46
 
 # Optional leakage control: uncomment to see whether the active LoRA changes a
 # generic person when the trigger is absent.
-# A neutral studio portrait of a person, natural skin texture, soft even daylight, plain pale background. --w 1024 --h 1024 --s 8 --l 1 --d 47
+# trigger-check: allow-next
+# A neutral head-and-shoulders portrait of a person, calm expression, soft even lighting, plain background. --w 1024 --h 1024 --s 8 --l 1 --d 47
