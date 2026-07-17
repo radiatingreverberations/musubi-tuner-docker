@@ -6,7 +6,7 @@ resolution = [1024, 1024]
 caption_extension = ".txt"
 batch_size = 1
 enable_bucket = true
-bucket_no_upscale = false
+bucket_no_upscale = true
 
 [[datasets]]
 image_directory = "__MUSUBI_HOME__/dataset/krea2/images"

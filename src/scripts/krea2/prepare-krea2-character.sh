@@ -13,7 +13,7 @@ LATENT_SCRIPT="$MUSUBI_HOME/src/musubi_tuner/krea2_cache_latents.py"
 TEXT_ENCODER_SCRIPT="$MUSUBI_HOME/src/musubi_tuner/krea2_cache_text_encoder_outputs.py"
 
 print_usage() {
-    printf 'Usage: %s [--preset default|10gb-smoke|10gb]\n' "$(basename "$0")"
+    printf 'Usage: %s [--preset default|32gb-quality|32gb-attention|10gb]\n' "$(basename "$0")"
 }
 
 PRESET="default"
@@ -46,10 +46,10 @@ done
 
 TEXT_ENCODER_DEVICE_ARGS=()
 case "$PRESET" in
-    default)
+    default|32gb-quality|32gb-attention)
         DATASET_CONFIG="$WORKFLOW_DIR/dataset.toml"
         ;;
-    10gb-smoke|10gb)
+    10gb)
         DATASET_CONFIG="$WORKFLOW_DIR/dataset-$PRESET.toml"
         TEXT_ENCODER_DEVICE_ARGS=(--device cpu)
         ;;

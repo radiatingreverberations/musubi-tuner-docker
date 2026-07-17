@@ -10,7 +10,7 @@ WORKFLOW_DIR="$BASE_DIR/dataset/krea2"
 TRAIN_SCRIPT="$MUSUBI_HOME/src/musubi_tuner/krea2_train_network.py"
 
 print_preset_usage() {
-    printf 'Launcher preset: --preset default|10gb-smoke|10gb\n' >&2
+    printf 'Launcher preset: --preset default|32gb-quality|32gb-attention|10gb\n' >&2
 }
 
 PRESET="default"
@@ -46,7 +46,7 @@ case "$PRESET" in
     default)
         TRAIN_CONFIG="$WORKFLOW_DIR/train.toml"
         ;;
-    10gb-smoke|10gb)
+    32gb-quality|32gb-attention|10gb)
         TRAIN_CONFIG="$WORKFLOW_DIR/train-$PRESET.toml"
         ;;
     *)

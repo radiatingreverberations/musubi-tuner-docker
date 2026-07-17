@@ -13,10 +13,10 @@ OUTPUT_DIR="$BASE_DIR/output/krea2-character"
 mkdir -p \
     "$WORKFLOW_DIR/images" \
     "$WORKFLOW_DIR/cache" \
-    "$WORKFLOW_DIR/cache-10gb-smoke" \
     "$WORKFLOW_DIR/cache-10gb" \
     "$OUTPUT_DIR/logs" \
-    "$OUTPUT_DIR/10gb-smoke/logs" \
+    "$OUTPUT_DIR/32gb-quality/logs" \
+    "$OUTPUT_DIR/32gb-attention/logs" \
     "$OUTPUT_DIR/10gb/logs"
 
 escaped_base_dir="${BASE_DIR//\\/\\\\}"
@@ -47,8 +47,8 @@ render_template() {
 
 render_template "$TEMPLATE_DIR/dataset.toml" "$WORKFLOW_DIR/dataset.toml"
 render_template "$TEMPLATE_DIR/train.toml" "$WORKFLOW_DIR/train.toml"
-render_template "$TEMPLATE_DIR/dataset-10gb-smoke.toml" "$WORKFLOW_DIR/dataset-10gb-smoke.toml"
-render_template "$TEMPLATE_DIR/train-10gb-smoke.toml" "$WORKFLOW_DIR/train-10gb-smoke.toml"
+render_template "$TEMPLATE_DIR/train-32gb-quality.toml" "$WORKFLOW_DIR/train-32gb-quality.toml"
+render_template "$TEMPLATE_DIR/train-32gb-attention.toml" "$WORKFLOW_DIR/train-32gb-attention.toml"
 render_template "$TEMPLATE_DIR/dataset-10gb.toml" "$WORKFLOW_DIR/dataset-10gb.toml"
 render_template "$TEMPLATE_DIR/train-10gb.toml" "$WORKFLOW_DIR/train-10gb.toml"
 render_template "$TEMPLATE_DIR/samples.txt" "$WORKFLOW_DIR/samples.txt"
@@ -56,4 +56,5 @@ render_template "$TEMPLATE_DIR/samples.txt" "$WORKFLOW_DIR/samples.txt"
 echo
 echo "Krea2 character workflow initialized in $WORKFLOW_DIR"
 echo "Add paired images and .txt captions to $WORKFLOW_DIR/images, then edit $WORKFLOW_DIR/samples.txt."
-echo "Low-VRAM presets: --preset 10gb-smoke or --preset 10gb"
+echo "32 GB presets: --preset 32gb-quality or --preset 32gb-attention"
+echo "Low-VRAM preset: --preset 10gb"

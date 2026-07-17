@@ -1,0 +1,66 @@
+# Longer attention-only Krea2 character LoRA for an RTX 5090 with 32 GB VRAM.
+# The narrower target set supports a longer comparison run at native 1024px.
+
+# Models and data
+dit = "__MUSUBI_HOME__/models/krea2/raw.safetensors"
+turbo_dit = "__MUSUBI_HOME__/models/krea2/turbo.safetensors"
+vae = "__MUSUBI_HOME__/models/vae/qwen_image_vae.safetensors"
+text_encoder = "__MUSUBI_HOME__/models/text_encoders/qwen3vl_4b_bf16.safetensors"
+dataset_config = "__MUSUBI_HOME__/dataset/krea2/dataset.toml"
+
+# Precision and memory
+mixed_precision = "bf16"
+fp8_base = true
+fp8_scaled = true
+gradient_checkpointing = true
+sdpa = true
+
+# Resolution-aware Krea2 flow-matching schedule
+timestep_sampling = "krea2_shift"
+weighting_scheme = "none"
+
+# LoRA network: attention projections only
+network_module = "networks.lora_krea2"
+network_dim = 64
+network_alpha = 64
+network_args = ["exclude_patterns=['.*\\.mlp\\..*','first','last\\.linear','tmlp\\..*','txtmlp\\..*','tproj\\.1','txtfusion\\..*']"]
+
+# Optimizer
+optimizer_type = "adamw8bit"
+optimizer_args = ["weight_decay=0.0001"]
+learning_rate = 0.00005
+lr_scheduler = "constant"
+lr_warmup_steps = 0
+max_grad_norm = 1.0
+
+# Training duration
+max_train_steps = 2400
+gradient_accumulation_steps = 1
+
+# Checkpoints and resumable state
+save_every_n_steps = 200
+save_last_n_steps = 2600
+save_state = true
+save_state_on_train_end = true
+save_last_n_steps_state = 400
+
+# Fixed Turbo previews. Turbo sampling cannot be combined with blocks_to_swap.
+sample_prompts = "__MUSUBI_HOME__/dataset/krea2/samples.txt"
+sample_every_n_steps = 200
+sample_at_first = true
+
+# Data loading and reproducibility
+max_data_loader_n_workers = 2
+persistent_data_loader_workers = true
+seed = 42
+
+# Output and logging
+output_dir = "__MUSUBI_HOME__/output/krea2-character/32gb-attention"
+output_name = "krea2-character-lora-32gb-attention"
+logging_dir = "__MUSUBI_HOME__/output/krea2-character/32gb-attention/logs"
+log_with = "tensorboard"
+log_config = true
+
+metadata_title = "Krea2 character likeness LoRA 32 GB attention"
+metadata_description = "Longer rank-64 character likeness LoRA trained on Krea2 attention projections."
+metadata_tags = "krea2,character,likeness,lora,attention,32gb"
