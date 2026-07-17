@@ -1,4 +1,4 @@
-name: Trigger Musubi Tuner builds on new commits to main
+name: Build Musubi Tuner images on main
 
 on:
   push:
@@ -9,32 +9,19 @@ jobs:
   get-musubi-latest-release:
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.fetch.outputs.release }}
+      tag: ${{ steps.fetch.outputs.tag }}
     steps:
-      - name: Get Musubi Tuner latest release
+      - uses: actions/checkout@v6
+      - name: Get latest release
         id: fetch
-        uses: pozetroninc/github-action-get-latest-release@v0.8.0
-        with:
-          owner: kohya-ss
-          repo: musubi-tuner
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-  build-base:
-    concurrency:
-      group: build-base
-      cancel-in-progress: true
-    uses: ./.github/workflows/build-docker.yml
-    with:
-      musubi_ref: main
-      image_label: main
-      bake_target: base
-    permissions:
-      contents: read
-      packages: write
-    secrets: inherit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag=$(bash .github/scripts/resolve-musubi-latest-release.sh)
+          echo "Latest Musubi Tuner release: $tag"
+          printf 'tag=%s\n' "$tag" >>"$GITHUB_OUTPUT"
 
   build-musubi-main:
-    needs: build-base
     concurrency:
       group: build-main
       cancel-in-progress: true
@@ -42,13 +29,14 @@ jobs:
     with:
       musubi_ref: main
       image_label: main
+      push_images: true
     permissions:
       contents: read
       packages: write
     secrets: inherit
 
   build-musubi-latest-release:
-    needs: [get-musubi-latest-release, build-base]
+    needs: get-musubi-latest-release
     concurrency:
       group: build-latest
       cancel-in-progress: true
@@ -56,6 +44,8 @@ jobs:
     with:
       musubi_ref: ${{ needs.get-musubi-latest-release.outputs.tag }}
       image_label: latest
+      extra_image_label: ${{ needs.get-musubi-latest-release.outputs.tag }}
+      push_images: true
     permissions:
       contents: read
       packages: write

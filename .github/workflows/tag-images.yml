@@ -1,0 +1,42 @@
+name: Tag existing Musubi Tuner images
+
+on:
+  workflow_call:
+    inputs:
+      source_label:
+        description: Existing image label to copy
+        required: true
+        type: string
+      target_label:
+        description: New image label to create
+        required: true
+        type: string
+
+jobs:
+  tag-images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Install skopeo
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y skopeo
+
+      - name: Copy release tags
+        env:
+          REGISTRY: ghcr.io
+          REGISTRY_NAMESPACE: ghcr.io/${{ github.repository_owner }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_LABEL: ${{ inputs.source_label }}
+          TARGET_LABEL: ${{ inputs.target_label }}
+        run: |
+          set -euo pipefail
+          echo "$REGISTRY_TOKEN" | skopeo login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+          for image_name in musubi-tuner musubi-tuner-ssh; do
+            source_image="${REGISTRY_NAMESPACE}/${image_name}:${SOURCE_LABEL}"
+            target_image="${REGISTRY_NAMESPACE}/${image_name}:${TARGET_LABEL}"
+            echo "Tagging $source_image -> $target_image"
+            skopeo copy --all "docker://${source_image}" "docker://${target_image}"
+          done

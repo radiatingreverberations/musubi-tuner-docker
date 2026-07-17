@@ -1,0 +1,100 @@
+name: Docker Bake build
+description: Build and optionally push Musubi Tuner Docker Bake targets.
+
+inputs:
+  musubi_ref:
+    description: Musubi Tuner branch or tag reference
+    required: true
+  targets:
+    description: Comma or newline separated Bake targets
+    required: true
+  push:
+    description: Whether to push the built images
+    required: false
+    default: "true"
+  registry:
+    description: Container registry host
+    required: false
+    default: ghcr.io
+  registry_token:
+    description: Token for authenticating to the container registry
+    required: false
+    default: ""
+  github_token:
+    description: Token for authenticated GitHub API requests
+    required: false
+    default: ""
+  extra_set:
+    description: Additional Docker Bake set lines
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Pre-create BuildKit volume on /mnt
+      shell: bash
+      run: |
+        sudo mkdir -p /mnt/buildkit-state
+        sudo docker volume create \
+          --driver local \
+          --opt type=none \
+          --opt device=/mnt/buildkit-state \
+          --opt o=bind \
+          buildx_buildkit_ci0_state
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+      with:
+        name: ci
+
+    - name: Log in to registry
+      if: ${{ inputs.push == 'true' && inputs.registry_token != '' }}
+      uses: docker/login-action@v4
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ github.actor }}
+        password: ${{ inputs.registry_token }}
+
+    - name: Resolve Musubi Tuner commit
+      id: musubi
+      shell: bash
+      env:
+        MUSUBI_REF: ${{ inputs.musubi_ref }}
+      run: |
+        sha=$(bash "${{ github.action_path }}/../../scripts/resolve-musubi-sha.sh" "$MUSUBI_REF")
+        printf 'sha=%s\n' "$sha" >>"$GITHUB_OUTPUT"
+
+    - name: Resolve Musubi Tuner metadata
+      id: metadata
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        MUSUBI_REF: ${{ inputs.musubi_ref }}
+        MUSUBI_SHA: ${{ steps.musubi.outputs.sha }}
+      run: |
+        bash "${{ github.action_path }}/../../scripts/resolve-musubi-metadata.sh" \
+          "$MUSUBI_REF" \
+          "$MUSUBI_SHA" >>"$GITHUB_OUTPUT"
+
+    - name: Normalize targets
+      id: targets
+      shell: bash
+      env:
+        BAKE_TARGETS: ${{ inputs.targets }}
+      run: |
+        echo "list<<EOF" >>"$GITHUB_OUTPUT"
+        printf '%s\n' "$BAKE_TARGETS" | tr ',' '\n' | sed '/^[[:space:]]*$/d' >>"$GITHUB_OUTPUT"
+        echo "EOF" >>"$GITHUB_OUTPUT"
+
+    - name: Build with Docker Bake
+      uses: docker/bake-action@v7
+      with:
+        push: ${{ inputs.push == 'true' }}
+        set: |
+          *.args.REFRESH_MUSUBI=${{ steps.musubi.outputs.sha }}
+          *.labels.musubi.ref=${{ inputs.musubi_ref }}
+          *.labels.musubi.sha=${{ steps.musubi.outputs.sha }}
+          ${{ steps.metadata.outputs.bake_set }}
+          ${{ inputs.extra_set }}
+        targets: ${{ steps.targets.outputs.list }}

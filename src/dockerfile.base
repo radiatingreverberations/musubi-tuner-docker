@@ -1,0 +1,81 @@
+ARG BASE_IMAGE=ghcr.io/offloadr/base/nvidia-full:py3.12-torch2.11.0-cuda13.0.3
+FROM ${BASE_IMAGE}
+
+WORKDIR /musubi
+
+ENV MUSUBI_HOME=/musubi
+ENV MUSUBI_SCRIPTS_DIR=/opt/musubi-scripts
+ENV PATH="${MUSUBI_SCRIPTS_DIR}:${PATH}"
+ENV PYTHONUNBUFFERED=1
+
+# Interactive tooling used for long-running training sessions.
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        nano \
+        tmux \
+    && rm -rf /var/lib/apt/lists/*
+
+# Image-specific dependencies that are not declared by Musubi itself.
+RUN --mount=type=cache,id=musubi-uv-build,target=/root/.cache/uv-build,sharing=locked \
+    test -n "${OFFLOADR_VENV}" && \
+    test -x "${OFFLOADR_VENV}/bin/python" && \
+    UV_CACHE_DIR=/root/.cache/uv-build uv pip install \
+        --python "${OFFLOADR_VENV}/bin/python" \
+        requests \
+        wandb
+
+# Invalidate source-dependent layers when a moving upstream ref changes.
+ARG REFRESH_MUSUBI=0
+RUN printf '%s\n' "${REFRESH_MUSUBI}" >/tmp/musubi-refresh
+
+# Install Musubi Tuner.
+ARG MUSUBI_VERSION=main
+ADD https://github.com/kohya-ss/musubi-tuner/archive/${MUSUBI_VERSION}.tar.gz /tmp/musubi.tar.gz
+RUN tar -xzf /tmp/musubi.tar.gz -C /musubi --strip-components=1 && \
+    rm -f /tmp/musubi.tar.gz
+
+RUN --mount=type=cache,id=musubi-uv-build,target=/root/.cache/uv-build,sharing=locked \
+    test -n "${OFFLOADR_VENV}" && \
+    test -x "${OFFLOADR_VENV}/bin/python" && \
+    UV_CACHE_DIR=/root/.cache/uv-build uv pip install \
+        --python "${OFFLOADR_VENV}/bin/python" \
+        -e . && \
+    "${OFFLOADR_VENV}/bin/python" -m compileall -q "${OFFLOADR_VENV}" && \
+    chmod -R u=rwX,go=rX "${OFFLOADR_VENV}"
+
+# Install project helpers and expose every shell/Python helper through PATH.
+COPY scripts/ ${MUSUBI_SCRIPTS_DIR}/
+RUN set -eu; \
+    find "${MUSUBI_SCRIPTS_DIR}" -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r$//' {} +; \
+    find "${MUSUBI_SCRIPTS_DIR}" -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +; \
+    find "${MUSUBI_SCRIPTS_DIR}" -type f \( -name '*.sh' -o -name '*.py' \) \
+        -exec bash -c 'for file do ln -sf "$file" "/usr/local/bin/$(basename "$file")"; done' _ {} +
+
+# Activate the inherited venv for the entrypoint and future login shells.
+RUN mkdir -p /usr/local/lib/musubi
+COPY runtime-venv.sh /usr/local/lib/musubi/runtime-venv.sh
+RUN sed -i 's/\r$//' /usr/local/lib/musubi/runtime-venv.sh && \
+    chmod 0644 /usr/local/lib/musubi/runtime-venv.sh
+
+COPY init-venv.sh /etc/profile.d/10-musubi-venv.sh
+RUN sed -i 's/\r$//' /etc/profile.d/10-musubi-venv.sh && \
+    chmod 0644 /etc/profile.d/10-musubi-venv.sh
+
+# Provide a tmux configuration suited to interactive cloud sessions.
+RUN printf "set -g mouse on\nset -g default-terminal 'screen-256color'\nset -g default-shell /bin/bash\nset -g default-command 'bash -l'\n" \
+        >/root/.tmux.conf && \
+    mkdir -p /etc/skel && \
+    cp /root/.tmux.conf /etc/skel/.tmux.conf
+
+# Provide a default single-GPU Accelerate configuration.
+RUN mkdir -p \
+        /root/.cache/huggingface/accelerate \
+        /musubi/.cache/huggingface/accelerate
+COPY accelerate_config.yaml /root/.cache/huggingface/accelerate/default_config.yaml
+COPY accelerate_config.yaml /musubi/.cache/huggingface/accelerate/default_config.yaml
+
+COPY entrypoint.base.sh /usr/local/bin/musubi-entrypoint
+RUN sed -i 's/\r$//' /usr/local/bin/musubi-entrypoint && \
+    chmod +x /usr/local/bin/musubi-entrypoint
+
+ENTRYPOINT ["/usr/local/bin/musubi-entrypoint"]

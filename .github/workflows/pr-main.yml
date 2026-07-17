@@ -1,4 +1,4 @@
-name: Trigger Musubi Tuner builds on pull requests to main
+name: Build Musubi Tuner images on pull requests
 
 on:
   pull_request:
@@ -10,7 +10,8 @@ jobs:
     with:
       musubi_ref: main
       image_label: main
+      push_images: false
     permissions:
       contents: read
-      packages: write
+      packages: read
     secrets: inherit

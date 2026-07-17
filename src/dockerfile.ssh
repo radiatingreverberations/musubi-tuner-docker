@@ -1,0 +1,30 @@
+ARG MUSUBI_BASE_IMAGE=musubi-tuner
+FROM ${MUSUBI_BASE_IMAGE}
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        curl \
+        openssh-server \
+        rsync \
+    && rm -rf /var/lib/apt/lists/*
+
+# Intentionally bake a stable, shared image identity for transient GPU hosts.
+# The private key is extractable from the public image; see SSH.md for the
+# accepted continuity-only threat model.
+COPY bake_ssh_host_key.sh /usr/local/bin/bake_ssh_host_key.sh
+RUN sed -i 's/\r$//' /usr/local/bin/bake_ssh_host_key.sh && \
+    chmod +x /usr/local/bin/bake_ssh_host_key.sh
+ARG SSH_HOST_IDENTITY_DIGEST=unconfigured
+RUN --mount=type=secret,id=SSH_HOST_ED25519_KEY_B64,required=false \
+    test -n "${SSH_HOST_IDENTITY_DIGEST}" && \
+    /usr/local/bin/bake_ssh_host_key.sh
+
+EXPOSE 2222
+
+COPY entrypoint.ssh.sh /usr/local/bin/musubi-ssh-entrypoint
+RUN sed -i 's/\r$//' /usr/local/bin/musubi-ssh-entrypoint && \
+    chmod +x /usr/local/bin/musubi-ssh-entrypoint
+
+ENV SSH_USER=""
+
+ENTRYPOINT ["/usr/local/bin/musubi-ssh-entrypoint"]

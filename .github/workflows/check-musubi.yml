@@ -4,12 +4,16 @@ on:
   workflow_call:
     inputs:
       musubi_ref:
-        description: "Musubi Tuner branch or tag to check"
+        description: Musubi Tuner branch or tag to check
         required: true
         type: string
       image_label:
-        description: "Image label to compare against"
+        description: Image label to compare
         required: true
+        type: string
+      extra_image_label:
+        description: Optional release-specific alias to verify
+        required: false
         type: string
 
 jobs:
@@ -17,42 +21,116 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.compare.outputs.changed }}
-      musubi_sha: ${{ steps.musubi.outputs.sha }}
-
+      extra_tag_needed: ${{ steps.compare.outputs.extra_tag_needed }}
     steps:
-      - name: Install skopeo + jq + gh
+      - uses: actions/checkout@v6
+
+      - name: Install registry inspection tools
         run: |
           sudo apt-get -qq update
-          sudo apt-get -qq install -y skopeo jq gh
+          sudo apt-get -qq install -y jq skopeo
 
-      - name: Get HEAD of Musubi Tuner
-        id: musubi
+      - name: Resolve upstream commit
+        id: upstream
+        env:
+          MUSUBI_REF: ${{ inputs.musubi_ref }}
         run: |
-          sha=$(git ls-remote https://github.com/kohya-ss/musubi-tuner.git ${{ inputs.musubi_ref }} | cut -f1)
+          sha=$(bash .github/scripts/resolve-musubi-sha.sh "$MUSUBI_REF")
           echo "Musubi Tuner SHA: $sha"
-          echo "sha=$sha" >>"$GITHUB_OUTPUT"
+          printf 'sha=%s\n' "$sha" >>"$GITHUB_OUTPUT"
 
-      - name: Get musubi.sha label from latest built image
+      - name: Inspect published images
         id: current
+        env:
+          REGISTRY_NAMESPACE: ghcr.io/${{ github.repository_owner }}
+          SOURCE_LABEL: ${{ inputs.image_label }}
+          EXTRA_LABEL: ${{ inputs.extra_image_label }}
+          EXPECTED_REF: ${{ inputs.musubi_ref }}
         run: |
-          image="ghcr.io/${{ github.repository_owner }}/musubi-tuner:${{ inputs.image_label }}"
-          if skopeo inspect docker://"$image" >/dev/null 2>&1; then
-            last=$(skopeo inspect docker://"$image" \
-                     | jq -r '.Labels["musubi.sha"] // empty')
-          else
-            last=""        # tag doesn't exist
+          namespace="$REGISTRY_NAMESPACE"
+          source_label="$SOURCE_LABEL"
+          extra_label="$EXTRA_LABEL"
+          expected_ref="$EXPECTED_REF"
+          source_complete=true
+          published_sha=""
+
+          for image_name in musubi-tuner musubi-tuner-ssh; do
+            image="${namespace}/${image_name}:${source_label}"
+            if json=$(skopeo inspect "docker://${image}" 2>/dev/null); then
+              image_sha=$(printf '%s\n' "$json" | jq -r '.Labels["musubi.sha"] // empty')
+              image_ref=$(printf '%s\n' "$json" | jq -r '.Labels["musubi.ref"] // empty')
+              commit_date=$(printf '%s\n' "$json" | jq -r '.Labels["musubi.commit.date"] // empty')
+              release_published_at=$(printf '%s\n' "$json" | jq -r '.Labels["musubi.release.published_at"] // empty')
+              if [ -z "$image_sha" ]; then
+                echo "Missing musubi.sha label: $image"
+                source_complete=false
+              elif [ "$image_ref" != "$expected_ref" ]; then
+                echo "Missing or stale musubi.ref label: $image"
+                source_complete=false
+              elif [ -z "$commit_date" ]; then
+                echo "Missing musubi.commit.date label: $image"
+                source_complete=false
+              elif [ -n "$extra_label" ] && [ -z "$release_published_at" ]; then
+                echo "Missing musubi.release.published_at label: $image"
+                source_complete=false
+              elif [ -z "$published_sha" ]; then
+                published_sha="$image_sha"
+              elif [ "$published_sha" != "$image_sha" ]; then
+                echo "Inconsistent musubi.sha label: $image"
+                source_complete=false
+              fi
+            else
+              echo "Missing source image: $image"
+              source_complete=false
+            fi
+          done
+
+          extra_complete=false
+          if [ -n "$extra_label" ] && [ "$source_complete" = true ]; then
+            extra_complete=true
+            for image_name in musubi-tuner musubi-tuner-ssh; do
+              source_image="${namespace}/${image_name}:${source_label}"
+              extra_image="${namespace}/${image_name}:${extra_label}"
+              source_digest=$(skopeo inspect "docker://${source_image}" | jq -r '.Digest // empty')
+              if extra_json=$(skopeo inspect "docker://${extra_image}" 2>/dev/null); then
+                extra_digest=$(printf '%s\n' "$extra_json" | jq -r '.Digest // empty')
+              else
+                extra_digest=""
+              fi
+              if [ -z "$extra_digest" ] || [ "$extra_digest" != "$source_digest" ]; then
+                echo "Missing or stale release alias: $extra_image"
+                extra_complete=false
+              fi
+            done
           fi
-          echo "Current image SHA: $last"
-          echo "sha=$last" >>"$GITHUB_OUTPUT"
+
+          echo "sha=$published_sha" >>"$GITHUB_OUTPUT"
+          echo "source_complete=$source_complete" >>"$GITHUB_OUTPUT"
+          echo "extra_complete=$extra_complete" >>"$GITHUB_OUTPUT"
 
       - name: Decide whether to rebuild
         id: compare
+        env:
+          EXTRA_LABEL: ${{ inputs.extra_image_label }}
+          SOURCE_COMPLETE: ${{ steps.current.outputs.source_complete }}
+          CURRENT_SHA: ${{ steps.current.outputs.sha }}
+          EXTRA_COMPLETE: ${{ steps.current.outputs.extra_complete }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
         run: |
-          if [ -n "${{ steps.current.outputs.sha }}" ] && \
-             [ "${{ steps.musubi.outputs.sha }}" != "${{ steps.current.outputs.sha }}" ]; then
-            echo "changed=true"  >>"$GITHUB_OUTPUT"
+          if [ "$SOURCE_COMPLETE" != true ] || \
+             [ -z "$CURRENT_SHA" ] || \
+             [ "$UPSTREAM_SHA" != "$CURRENT_SHA" ]; then
+            echo "changed=true" >>"$GITHUB_OUTPUT"
           else
             echo "changed=false" >>"$GITHUB_OUTPUT"
+          fi
+
+          if [ -n "$EXTRA_LABEL" ] && \
+             [ "$SOURCE_COMPLETE" = true ] && \
+             [ "$EXTRA_COMPLETE" != true ]; then
+            echo "extra_tag_needed=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "extra_tag_needed=false" >>"$GITHUB_OUTPUT"
           fi
 
   build-docker:
@@ -65,6 +143,20 @@ jobs:
     with:
       musubi_ref: ${{ inputs.musubi_ref }}
       image_label: ${{ inputs.image_label }}
+      extra_image_label: ${{ inputs.extra_image_label }}
+      push_images: true
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+
+  tag-extra-label:
+    needs: check-musubi
+    if: needs.check-musubi.outputs.changed != 'true' && needs.check-musubi.outputs.extra_tag_needed == 'true'
+    uses: ./.github/workflows/tag-images.yml
+    with:
+      source_label: ${{ inputs.image_label }}
+      target_label: ${{ inputs.extra_image_label }}
     permissions:
       contents: read
       packages: write
