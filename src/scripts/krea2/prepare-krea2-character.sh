@@ -7,11 +7,58 @@ SCRIPTS_DIR="${MUSUBI_SCRIPTS_DIR:-$(cd -- "$SCRIPT_DIR/.." && pwd)}"
 source "$SCRIPTS_DIR/env.sh"
 
 WORKFLOW_DIR="$BASE_DIR/dataset/krea2"
-DATASET_CONFIG="$WORKFLOW_DIR/dataset.toml"
 VAE="$BASE_DIR/models/vae/qwen_image_vae.safetensors"
 TEXT_ENCODER="$BASE_DIR/models/text_encoders/qwen3vl_4b_bf16.safetensors"
 LATENT_SCRIPT="$MUSUBI_HOME/src/musubi_tuner/krea2_cache_latents.py"
 TEXT_ENCODER_SCRIPT="$MUSUBI_HOME/src/musubi_tuner/krea2_cache_text_encoder_outputs.py"
+
+print_usage() {
+    printf 'Usage: %s [--preset default|10gb-smoke|10gb]\n' "$(basename "$0")"
+}
+
+PRESET="default"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --preset)
+            if [[ $# -lt 2 ]]; then
+                echo "--preset requires a value." >&2
+                print_usage >&2
+                exit 64
+            fi
+            PRESET="$2"
+            shift 2
+            ;;
+        --preset=*)
+            PRESET="${1#*=}"
+            shift
+            ;;
+        -h|--help)
+            print_usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            print_usage >&2
+            exit 64
+            ;;
+    esac
+done
+
+TEXT_ENCODER_DEVICE_ARGS=()
+case "$PRESET" in
+    default)
+        DATASET_CONFIG="$WORKFLOW_DIR/dataset.toml"
+        ;;
+    10gb-smoke|10gb)
+        DATASET_CONFIG="$WORKFLOW_DIR/dataset-$PRESET.toml"
+        TEXT_ENCODER_DEVICE_ARGS=(--device cpu)
+        ;;
+    *)
+        echo "Unknown Krea2 preset: $PRESET" >&2
+        print_usage >&2
+        exit 64
+        ;;
+esac
 
 require_file() {
     if [[ ! -f "$1" ]]; then
@@ -26,6 +73,8 @@ require_file "$VAE" "Run download-krea2.sh first."
 require_file "$TEXT_ENCODER" "Run download-krea2.sh first."
 require_file "$LATENT_SCRIPT" "Use a Musubi Tuner image with Krea2 support (v0.3.4 or newer)."
 require_file "$TEXT_ENCODER_SCRIPT" "Use a Musubi Tuner image with Krea2 support (v0.3.4 or newer)."
+
+echo "Preparing Krea2 preset: $PRESET"
 
 if ! command -v python >/dev/null 2>&1; then
     echo "Python is not available on PATH; the image virtual environment is not active." >&2
@@ -142,4 +191,5 @@ python "$LATENT_SCRIPT" \
 python "$TEXT_ENCODER_SCRIPT" \
     --dataset_config "$DATASET_CONFIG" \
     --text_encoder "$TEXT_ENCODER" \
-    --batch_size 1
+    --batch_size 1 \
+    "${TEXT_ENCODER_DEVICE_ARGS[@]}"

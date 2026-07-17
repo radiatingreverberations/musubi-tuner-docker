@@ -1,10 +1,11 @@
 # Krea2 character LoRA workflow
 
-The Krea2 helpers provide an opinionated character-likeness LoRA workflow for
-an RTX 5090 with 32 GB VRAM. It trains on Krea-2-Raw and generates fixed-seed
-validation previews with Krea-2-Turbo, following Musubi Tuner's recommended
-RAW-training/Turbo-inference workflow. Krea2 support requires Musubi Tuner
-v0.3.4 or newer.
+The default Krea2 helpers provide an opinionated character-likeness LoRA
+workflow for an RTX 5090 with 32 GB VRAM. It trains on Krea-2-Raw and generates
+fixed-seed validation previews with Krea-2-Turbo, following Musubi Tuner's
+recommended RAW-training/Turbo-inference workflow. Experimental presets are
+also included for attempting training with 10 GB VRAM. Krea2 support requires
+Musubi Tuner v0.3.4 or newer.
 
 The Krea model weights use the
 [Krea 2 Community License](https://huggingface.co/krea/Krea-2-Raw/blob/main/LICENSE.pdf).
@@ -50,11 +51,19 @@ directories:
 dataset/krea2/
     dataset.toml
     train.toml
+    dataset-10gb-smoke.toml
+    train-10gb-smoke.toml
+    dataset-10gb.toml
+    train-10gb.toml
     samples.txt
     images/
     cache/
+    cache-10gb-smoke/
+    cache-10gb/
 output/krea2-character/
     logs/
+    10gb-smoke/logs/
+    10gb/logs/
 ```
 
 Add 20-30 curated images to `dataset/krea2/images`, each beside a UTF-8 `.txt`
@@ -72,6 +81,53 @@ consistently in every training caption. Edit `dataset/krea2/samples.txt` to use
 the same trigger. Caption visible variable attributes such as clothing,
 hairstyle, pose, lighting, framing, and background so they do not silently
 bind to the identity.
+
+## Experimental 10 GB presets
+
+The low-VRAM presets are intentionally aggressive and are not a guarantee that
+Krea2 will fit every 10 GB card or host. They need substantial system RAM for
+CPU block swapping; 64 GB is preferable, while 32 GB plus a large swap file may
+work very slowly.
+
+Initialize or rerun initialization first so the additional non-destructive
+templates are present:
+
+```shell
+init-krea2-character.sh
+```
+
+Start with the 512-pixel, rank-8, 30-step smoke test:
+
+```shell
+prepare-krea2-character.sh --preset 10gb-smoke
+train-krea2-character.sh --preset 10gb-smoke
+```
+
+If it completes, try the potentially useful 640-pixel, rank-16, 800-step run:
+
+```shell
+prepare-krea2-character.sh --preset 10gb
+train-krea2-character.sh --preset 10gb
+```
+
+Both presets use BF16, scaled FP8 base weights, gradient checkpointing, SDPA,
+26 of 28 main blocks swapped to CPU, H2D-only swapping with a one-block ring,
+batch size 1, AdamW8bit, and attention-only LoRA targets. Text-encoder caching
+runs on CPU. Training-time sampling and Turbo weight loading are disabled
+because Turbo previews cannot be combined with block swapping.
+
+The presets share `dataset/krea2/images` but use separate resolution-specific
+caches. Re-run preparation for each preset after changing images, captions, or
+the configured resolution.
+Outputs and TensorBoard logs are written under
+`output/krea2-character/10gb-smoke` and `output/krea2-character/10gb`.
+
+If the smoke test still runs out of VRAM, close other GPU applications and edit
+`dataset-10gb-smoke.toml` to try 448 or 384 pixels, then reduce rank and alpha
+in `train-10gb-smoke.toml` from 8 to 4. Rebuild the smoke cache with
+`prepare-krea2-character.sh --preset 10gb-smoke` before retrying training.
+Expect block swapping to make training considerably slower than the default
+32 GB workflow.
 
 ## Prepare caches and train
 
@@ -93,8 +149,9 @@ Then start training:
 train-krea2-character.sh
 ```
 
-Additional arguments are forwarded to Musubi and override matching values in
-`train.toml`. For example, resume from a saved state with:
+Additional arguments other than the launcher's `--preset` option are forwarded
+to Musubi and override matching values in the selected training TOML. For
+example, resume the default workflow from a saved state with:
 
 ```shell
 train-krea2-character.sh --resume /musubi/output/krea2-character/krea2-character-lora-state

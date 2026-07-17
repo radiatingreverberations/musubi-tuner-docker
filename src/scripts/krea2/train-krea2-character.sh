@@ -7,8 +7,54 @@ SCRIPTS_DIR="${MUSUBI_SCRIPTS_DIR:-$(cd -- "$SCRIPT_DIR/.." && pwd)}"
 source "$SCRIPTS_DIR/env.sh"
 
 WORKFLOW_DIR="$BASE_DIR/dataset/krea2"
-TRAIN_CONFIG="$WORKFLOW_DIR/train.toml"
 TRAIN_SCRIPT="$MUSUBI_HOME/src/musubi_tuner/krea2_train_network.py"
+
+print_preset_usage() {
+    printf 'Launcher preset: --preset default|10gb-smoke|10gb\n' >&2
+}
+
+PRESET="default"
+FORWARDED_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --preset)
+            if [[ $# -lt 2 ]]; then
+                echo "--preset requires a value." >&2
+                print_preset_usage
+                exit 64
+            fi
+            PRESET="$2"
+            shift 2
+            ;;
+        --preset=*)
+            PRESET="${1#*=}"
+            shift
+            ;;
+        --)
+            shift
+            FORWARDED_ARGS+=("$@")
+            break
+            ;;
+        *)
+            FORWARDED_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+case "$PRESET" in
+    default)
+        TRAIN_CONFIG="$WORKFLOW_DIR/train.toml"
+        ;;
+    10gb-smoke|10gb)
+        TRAIN_CONFIG="$WORKFLOW_DIR/train-$PRESET.toml"
+        ;;
+    *)
+        echo "Unknown Krea2 preset: $PRESET" >&2
+        print_preset_usage
+        exit 64
+        ;;
+esac
 
 require_effective_file() {
     local path="$1"
@@ -35,20 +81,21 @@ if ! command -v python >/dev/null 2>&1 || ! command -v accelerate >/dev/null 2>&
     exit 2
 fi
 
-for argument in "$@"; do
+for argument in "${FORWARDED_ARGS[@]}"; do
     if [[ "$argument" == "-h" || "$argument" == "--help" ]]; then
-        exec python "$TRAIN_SCRIPT" "$@"
+        exec python "$TRAIN_SCRIPT" "${FORWARDED_ARGS[@]}"
     fi
 done
 
 cd "$BASE_DIR"
+echo "Training Krea2 preset: $PRESET"
 
 # Resolve the same config-plus-CLI precedence as Musubi before checking paths.
 # This keeps preflight compatible with overrides for models, data, prompts,
 # output directories, and even --config_file itself.
 effective_paths_file="$(mktemp)"
 trap 'rm -f -- "$effective_paths_file"' EXIT
-python - "$TRAIN_CONFIG" "$@" >"$effective_paths_file" <<'PY'
+python - "$TRAIN_CONFIG" "${FORWARDED_ARGS[@]}" >"$effective_paths_file" <<'PY'
 import contextlib
 import os
 import sys
@@ -132,4 +179,4 @@ exec accelerate launch \
     --mixed_precision bf16 \
     "$TRAIN_SCRIPT" \
     --config_file "$TRAIN_CONFIG" \
-    "$@"
+    "${FORWARDED_ARGS[@]}"
