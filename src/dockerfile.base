@@ -22,6 +22,7 @@ RUN --mount=type=cache,id=musubi-uv-build,target=/root/.cache/uv-build,sharing=l
     UV_CACHE_DIR=/root/.cache/uv-build uv pip install \
         --python "${OFFLOADR_VENV}/bin/python" \
         requests \
+        tensorboard \
         wandb
 
 # Invalidate source-dependent layers when a moving upstream ref changes.

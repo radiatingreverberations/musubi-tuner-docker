@@ -1,0 +1,65 @@
+# Krea2 character-LoRA baseline for an RTX 5090 with 32 GB VRAM.
+# Train on Krea-2-Raw and generate fixed validation previews with Krea-2-Turbo.
+
+# Models and data
+dit = "__MUSUBI_HOME__/models/krea2/raw.safetensors"
+turbo_dit = "__MUSUBI_HOME__/models/krea2/turbo.safetensors"
+vae = "__MUSUBI_HOME__/models/vae/qwen_image_vae.safetensors"
+text_encoder = "__MUSUBI_HOME__/models/text_encoders/qwen3vl_4b_bf16.safetensors"
+dataset_config = "__MUSUBI_HOME__/dataset/krea2/dataset.toml"
+
+# Precision and memory
+mixed_precision = "bf16"
+fp8_base = true
+fp8_scaled = true
+gradient_checkpointing = true
+sdpa = true
+
+# Resolution-aware Krea2 flow-matching schedule
+timestep_sampling = "krea2_shift"
+weighting_scheme = "none"
+
+# LoRA network: all supported Krea2 Linear layers
+network_module = "networks.lora_krea2"
+network_dim = 32
+network_alpha = 32
+
+# Optimizer
+optimizer_type = "adamw8bit"
+optimizer_args = ["weight_decay=0.0001"]
+learning_rate = 0.0001
+lr_scheduler = "constant"
+lr_warmup_steps = 0
+max_grad_norm = 1.0
+
+# Training duration
+max_train_steps = 1200
+gradient_accumulation_steps = 1
+
+# Checkpoints and resumable state
+save_every_n_steps = 200
+save_last_n_steps = 1400
+save_state = true
+save_state_on_train_end = true
+save_last_n_steps_state = 400
+
+# Fixed Turbo previews. Turbo sampling cannot be combined with blocks_to_swap.
+sample_prompts = "__MUSUBI_HOME__/dataset/krea2/samples.txt"
+sample_every_n_steps = 200
+sample_at_first = true
+
+# Data loading and reproducibility
+max_data_loader_n_workers = 2
+persistent_data_loader_workers = true
+seed = 42
+
+# Output and logging
+output_dir = "__MUSUBI_HOME__/output/krea2-character"
+output_name = "krea2-character-lora"
+logging_dir = "__MUSUBI_HOME__/output/krea2-character/logs"
+log_with = "tensorboard"
+log_config = true
+
+metadata_title = "Krea2 character likeness LoRA"
+metadata_description = "Character likeness LoRA trained on Krea-2-Raw for Krea-2-Turbo inference."
+metadata_tags = "krea2,character,likeness,lora"
