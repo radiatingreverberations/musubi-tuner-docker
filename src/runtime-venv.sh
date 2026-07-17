@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 VIRTUAL_ENV="${OFFLOADR_VENV:-/opt/venv}"
 export VIRTUAL_ENV
@@ -13,4 +13,4 @@ case ":${PATH}:" in
     *) export PATH="${VIRTUAL_ENV}/bin:${PATH}" ;;
 esac
 
-source "${VIRTUAL_ENV}/bin/activate"
+. "${VIRTUAL_ENV}/bin/activate"
