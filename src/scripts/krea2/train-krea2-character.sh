@@ -8,9 +8,11 @@ source "$SCRIPTS_DIR/env.sh"
 
 WORKFLOW_DIR="$BASE_DIR/dataset/krea2"
 TRAIN_SCRIPT="$MUSUBI_HOME/src/musubi_tuner/krea2_train_network.py"
+TRIGGER_FILE="$WORKFLOW_DIR/samples.txt"
+TRIGGER_WORDS_SCRIPT="$SCRIPTS_DIR/trigger_words.py"
 
 print_preset_usage() {
-    printf 'Launcher preset: --preset default|32gb-quality|32gb-attention|10gb\n' >&2
+    printf 'Launcher preset: --preset default|quality|attention|10gb\n' >&2
 }
 
 PRESET="default"
@@ -42,11 +44,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+OUTPUT_NAME_EXPLICIT=false
+for argument in "${FORWARDED_ARGS[@]}"; do
+    if [[ "$argument" == "--output_name" || "$argument" == --output_name=* ]]; then
+        OUTPUT_NAME_EXPLICIT=true
+        break
+    fi
+done
+
 case "$PRESET" in
     default)
         TRAIN_CONFIG="$WORKFLOW_DIR/train.toml"
         ;;
-    32gb-quality|32gb-attention|10gb)
+    quality|attention|10gb)
         TRAIN_CONFIG="$WORKFLOW_DIR/train-$PRESET.toml"
         ;;
     *)
@@ -132,6 +142,7 @@ for value in (
     args.sample_prompts,
     args.output_dir,
     args.logging_dir,
+    args.output_name,
 ):
     print("" if value is None else value)
 PY
@@ -140,7 +151,7 @@ mapfile -t effective_paths <"$effective_paths_file"
 rm -f -- "$effective_paths_file"
 trap - EXIT
 
-if [[ ${#effective_paths[@]} -ne 8 ]]; then
+if [[ ${#effective_paths[@]} -ne 9 ]]; then
     echo "Unable to resolve the effective Krea2 training configuration." >&2
     exit 2
 fi
@@ -153,6 +164,7 @@ TEXT_ENCODER="${effective_paths[4]}"
 SAMPLE_PROMPTS="${effective_paths[5]}"
 OUTPUT_DIR="${effective_paths[6]}"
 LOGGING_DIR="${effective_paths[7]}"
+OUTPUT_NAME="${effective_paths[8]}"
 
 require_effective_file "$DATASET_CONFIG" "--dataset_config" "Run init-krea2-character.sh or provide an existing dataset config."
 require_effective_file "$DIT" "--dit" "Run download-krea2.sh or override --dit with an existing Krea-2-Raw checkpoint."
@@ -164,6 +176,30 @@ if [[ -n "$SAMPLE_PROMPTS" ]]; then
     if [[ -n "$TURBO_DIT" ]]; then
         require_effective_file "$TURBO_DIT" "--turbo_dit" "Run download-krea2.sh or override --turbo_dit with an existing Krea-2-Turbo checkpoint."
     fi
+fi
+
+AUTO_OUTPUT_NAME_ARGS=()
+if [[ "$OUTPUT_NAME_EXPLICIT" != true ]]; then
+    require_effective_file "$TRIGGER_FILE" "Krea2 trigger metadata" \
+        "Run init-krea2-character.sh --trigger \"token class\" or pass --output_name explicitly."
+    require_effective_file "$TRIGGER_WORDS_SCRIPT" "trigger-word helper" \
+        "Use an image containing the bundled trigger-word helper."
+    if [[ -z "$OUTPUT_NAME" ]]; then
+        echo "No --output_name is configured after applying command-line overrides." >&2
+        exit 2
+    fi
+
+    if ! GENERATED_OUTPUT_NAME="$(
+        python "$TRIGGER_WORDS_SCRIPT" output-name \
+            --samples "$TRIGGER_FILE" \
+            --base-name "$OUTPUT_NAME" \
+            --insert-after-prefix krea2
+    )"; then
+        echo "Run init-krea2-character.sh --trigger \"token class\" or pass --output_name explicitly." >&2
+        exit 2
+    fi
+    AUTO_OUTPUT_NAME_ARGS=(--output_name "$GENERATED_OUTPUT_NAME")
+    echo "LoRA output name: $GENERATED_OUTPUT_NAME"
 fi
 
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
@@ -179,4 +215,5 @@ exec accelerate launch \
     --mixed_precision bf16 \
     "$TRAIN_SCRIPT" \
     --config_file "$TRAIN_CONFIG" \
-    "${FORWARDED_ARGS[@]}"
+    "${FORWARDED_ARGS[@]}" \
+    "${AUTO_OUTPUT_NAME_ARGS[@]}"

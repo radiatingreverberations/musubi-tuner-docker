@@ -1,7 +1,7 @@
 # Krea2 character LoRA workflow
 
 The default Krea2 helpers provide an opinionated character-likeness LoRA
-workflow for an RTX 5090 with 32 GB VRAM. It trains on Krea-2-Raw and generates
+workflow for a GPU with 32 GB VRAM. It trains on Krea-2-Raw and generates
 fixed-seed validation previews with Krea-2-Turbo, following Musubi Tuner's
 recommended RAW-training/Turbo-inference workflow. Experimental presets are
 included for higher-capacity 32 GB comparisons and for attempting training
@@ -10,6 +10,10 @@ with 10 GB VRAM. Krea2 support requires Musubi Tuner v0.3.4 or newer.
 The Krea model weights use the
 [Krea 2 Community License](https://huggingface.co/krea/Krea-2-Raw/blob/main/LICENSE.pdf).
 Review that license before downloading or using the models.
+
+For guidance on curating images, writing captions, comparing previews, and
+choosing a checkpoint, see
+[Krea2 character LoRA best practices](KREA2-BEST-PRACTICES.md).
 
 ## Download models
 
@@ -54,8 +58,8 @@ stays inside the already-mounted `dataset` and `output` directories:
 dataset/krea2/
     dataset.toml
     train.toml
-    train-32gb-quality.toml
-    train-32gb-attention.toml
+    train-quality.toml
+    train-attention.toml
     dataset-10gb.toml
     train-10gb.toml
     samples.txt
@@ -64,8 +68,8 @@ dataset/krea2/
     cache-10gb/
 output/krea2-character/
     logs/
-    32gb-quality/logs/
-    32gb-attention/logs/
+    quality/logs/
+    attention/logs/
     10gb/logs/
 ```
 
@@ -103,6 +107,15 @@ specific illustration style. They can therefore be used for photographic,
 anime, and other character LoRAs, or replaced with prompts tailored to the
 dataset's intended style.
 
+The training launcher also uses the first token in the trigger phrase as a
+filesystem-safe LoRA name component. For example, `mira7 person` produces
+`krea2-mira7-character-lora`, with the selected preset suffix retained. Pass an
+explicit Musubi output name to opt out or choose a completely custom name:
+
+```shell
+train-krea2-character.sh --output_name my-custom-lora
+```
+
 For an unusual workflow, override only the validation value or disable the
 trigger check explicitly:
 
@@ -124,9 +137,9 @@ resolution, seed, precision, and preview cadence constant:
 
 | Run | Launcher preset | Targets | Rank/alpha | Learning rate | Steps |
 | --- | --- | --- | --- | --- | --- |
-| A - reference | `default` | All Linear layers | 32/32 | `1e-4` | 1,200 |
-| B - higher capacity | `32gb-quality` | All Linear layers | 64/64 | `7e-5` | 1,800 |
-| C - longer attention-only | `32gb-attention` | Attention projections | 64/64 | `5e-5` | 2,400 |
+| A - reference | `default` | All Linear layers | 32/32 | `1e-4` | 1,800 |
+| B - higher capacity | `quality` | All Linear layers | 64/64 | `7e-5` | 2,700 |
+| C - longer attention-only | `attention` | Attention projections | 64/64 | `5e-5` | 3,600 |
 
 All three use `dataset/krea2/dataset.toml` and its shared cache. Prepare once
 after adding or changing images or captions:
@@ -139,17 +152,18 @@ Then run whichever comparisons you want:
 
 ```shell
 train-krea2-character.sh
-train-krea2-character.sh --preset 32gb-quality
-train-krea2-character.sh --preset 32gb-attention
+train-krea2-character.sh --preset quality
+train-krea2-character.sh --preset attention
 ```
 
-With 30 images and batch size 1, the runs are approximately 40, 60, and 80
+With 30 images and batch size 1, the runs are approximately 60, 90, and 120
 dataset passes. Each saves checkpoints, resumable state, and fixed-seed Turbo
-previews every 200 steps. Compare intermediate checkpoints rather than assuming
-the final checkpoint is best; likeness can peak before clothing, pose, or
-background bias becomes excessive. The preset outputs are isolated beneath
-`output/krea2-character`, `output/krea2-character/32gb-quality`, and
-`output/krea2-character/32gb-attention`.
+previews every 200 steps. The default intentionally continues beyond step 1,200
+so that 1,400, 1,600, and 1,800 can be compared; this does not imply that the
+last checkpoint is best. Likeness can peak before clothing, pose, or background
+bias becomes excessive. The preset outputs are isolated beneath
+`output/krea2-character`, `output/krea2-character/quality`, and
+`output/krea2-character/attention`.
 
 ## Experimental 10 GB preset
 
@@ -214,16 +228,32 @@ to Musubi and override matching values in the selected training TOML. For
 example, resume the default workflow from a saved state with:
 
 ```shell
-train-krea2-character.sh --resume /musubi/output/krea2-character/krea2-character-lora-state
+train-krea2-character.sh --resume /musubi/output/krea2-character/krea2-mira7-character-lora-state
 ```
 
 The default configuration uses 1024-pixel buckets without upscaling, BF16,
 scaled FP8 base weights, gradient checkpointing, SDPA, Musubi's resolution-aware
-`krea2_shift`, AdamW8bit at `1e-4`, and rank/alpha 32. It trains for 1,200
+`krea2_shift`, AdamW8bit at `1e-4`, and rank/alpha 32. It trains for 1,800
 steps and writes checkpoints, resumable state, Turbo previews, and TensorBoard
 logs beneath `output/krea2-character`. Checkpoints and previews are produced
 every 200 steps. Block swapping is intentionally disabled because Musubi does
 not allow it together with training-time Turbo previews.
+
+Initialization preserves an existing `train.toml`. To extend a workflow created
+with the previous 1,200-step template, either set `max_train_steps = 1800` and
+`save_last_n_steps = 2000` in that file, or override the duration for a new run:
+
+```shell
+train-krea2-character.sh --max_train_steps 1800
+```
+
+To continue an existing 1,200-step run, also resume its saved state rather than
+starting over:
+
+```shell
+train-krea2-character.sh --max_train_steps 1800 \
+  --resume /musubi/output/krea2-character/krea2-mira7-character-lora-state
+```
 
 Start TensorBoard in another shell or tmux pane with:
 

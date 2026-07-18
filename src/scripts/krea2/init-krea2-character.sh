@@ -7,6 +7,7 @@ SCRIPTS_DIR="${MUSUBI_SCRIPTS_DIR:-$(cd -- "$SCRIPT_DIR/.." && pwd)}"
 source "$SCRIPTS_DIR/env.sh"
 
 TEMPLATE_DIR="$SCRIPT_DIR/templates"
+TRIGGER_WORDS_SCRIPT="$SCRIPTS_DIR/trigger_words.py"
 WORKFLOW_DIR="$BASE_DIR/dataset/krea2"
 OUTPUT_DIR="$BASE_DIR/output/krea2-character"
 DEFAULT_TRIGGER="k2v9 person"
@@ -56,8 +57,8 @@ mkdir -p \
     "$WORKFLOW_DIR/cache" \
     "$WORKFLOW_DIR/cache-10gb" \
     "$OUTPUT_DIR/logs" \
-    "$OUTPUT_DIR/32gb-quality/logs" \
-    "$OUTPUT_DIR/32gb-attention/logs" \
+    "$OUTPUT_DIR/quality/logs" \
+    "$OUTPUT_DIR/attention/logs" \
     "$OUTPUT_DIR/10gb/logs"
 
 escaped_base_dir="${BASE_DIR//\\/\\\\}"
@@ -111,73 +112,22 @@ render_or_update_samples() {
         exit 2
     fi
 
-    python - "$source_path" "$target_path" "$TRIGGER" <<'PY'
-import os
-from pathlib import Path
-import re
-import stat
-import tempfile
-import sys
+    if [[ ! -f "$TRIGGER_WORDS_SCRIPT" ]]; then
+        echo "Missing trigger-word helper: $TRIGGER_WORDS_SCRIPT" >&2
+        exit 2
+    fi
 
-
-source_path = Path(sys.argv[1])
-target_path = Path(sys.argv[2])
-trigger = sys.argv[3]
-placeholder = "__KREA2_TRIGGER__"
-
-if target_path.exists():
-    original = target_path.read_text(encoding="utf-8-sig")
-    header = re.search(r"(?mi)^#\s*trigger:\s*([^\r\n]*?)\s*$", original)
-    legacy = re.search(r'(?mi)^#\s*Replace every occurrence of\s+"([^"\r\n]+)"', original)
-    match = header or legacy
-    if match is None or not match.group(1).strip():
-        print(
-            f"Cannot detect the existing trigger in {target_path}. "
-            "Add '# trigger: token class' or edit the file manually.",
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
-
-    old_trigger = match.group(1).strip()
-    updated = original.replace(old_trigger, trigger)
-    if header is None:
-        updated = f"# trigger: {trigger}\n" + updated
-    mode = stat.S_IMODE(target_path.stat().st_mode)
-    action = "Trigger already set in" if updated == original else "Updated trigger in"
-else:
-    original = source_path.read_text(encoding="utf-8")
-    if placeholder not in original:
-        print(f"Missing {placeholder} in bundled template: {source_path}", file=sys.stderr)
-        raise SystemExit(2)
-    updated = original.replace(placeholder, trigger)
-    mode = 0o644
-    action = "Created"
-
-if not target_path.exists() or updated != original:
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{target_path.name}.", dir=target_path.parent
-    )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
-            handle.write(updated)
-        os.chmod(temporary_name, mode)
-        os.replace(temporary_name, target_path)
-    except BaseException:
-        try:
-            os.unlink(temporary_name)
-        except FileNotFoundError:
-            pass
-        raise
-
-print(f"{action}: {target_path}")
-PY
+    python "$TRIGGER_WORDS_SCRIPT" set \
+        --template "$source_path" \
+        --samples "$target_path" \
+        --trigger "$TRIGGER" \
+        --placeholder "__KREA2_TRIGGER__"
 }
 
 render_template "$TEMPLATE_DIR/dataset.toml" "$WORKFLOW_DIR/dataset.toml"
 render_template "$TEMPLATE_DIR/train.toml" "$WORKFLOW_DIR/train.toml"
-render_template "$TEMPLATE_DIR/train-32gb-quality.toml" "$WORKFLOW_DIR/train-32gb-quality.toml"
-render_template "$TEMPLATE_DIR/train-32gb-attention.toml" "$WORKFLOW_DIR/train-32gb-attention.toml"
+render_template "$TEMPLATE_DIR/train-quality.toml" "$WORKFLOW_DIR/train-quality.toml"
+render_template "$TEMPLATE_DIR/train-attention.toml" "$WORKFLOW_DIR/train-attention.toml"
 render_template "$TEMPLATE_DIR/dataset-10gb.toml" "$WORKFLOW_DIR/dataset-10gb.toml"
 render_template "$TEMPLATE_DIR/train-10gb.toml" "$WORKFLOW_DIR/train-10gb.toml"
 render_or_update_samples "$TEMPLATE_DIR/samples.txt" "$WORKFLOW_DIR/samples.txt"
@@ -186,5 +136,5 @@ echo
 echo "Krea2 character workflow initialized in $WORKFLOW_DIR"
 echo "Add paired images and .txt captions to $WORKFLOW_DIR/images."
 echo "Set or update the preview trigger with: init-krea2-character.sh --trigger \"token class\""
-echo "32 GB presets: --preset 32gb-quality or --preset 32gb-attention"
+echo "32 GB presets: --preset quality or --preset attention"
 echo "Low-VRAM preset: --preset 10gb"

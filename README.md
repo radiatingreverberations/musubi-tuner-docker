@@ -43,7 +43,7 @@ For a remote cloud session, use the SSH image described in [SSH.md](SSH.md).
 
 ## Training workflows
 
-- [Krea2 character LoRA](docs/KREA2.md) provides a turnkey RTX 5090/32 GB
+- [Krea2 character LoRA](docs/KREA2.md) provides a turnkey 32 GB VRAM
   RAW-training and Turbo-preview workflow, higher-quality 32 GB comparison
   presets, and experimental 10 GB presets.
 - [WAN 2.2](docs/WAN2.2.md) covers the existing i2v and t2v download, cache,
