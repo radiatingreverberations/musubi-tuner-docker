@@ -1,58 +1,241 @@
 # Krea2 character LoRA workflow
 
-The default Krea2 helpers provide an opinionated character-likeness LoRA
-workflow for a GPU with 32 GB VRAM. It trains on Krea-2-Raw and generates
-fixed-seed validation previews with Krea-2-Turbo, following Musubi Tuner's
-recommended RAW-training/Turbo-inference workflow. Experimental presets are
-included for higher-capacity 32 GB comparisons and for attempting training
-with 10 GB VRAM. Krea2 support requires Musubi Tuner v0.3.4 or newer.
+This image includes a turnkey character-LoRA workflow for Krea2. Training uses
+Krea-2-Raw; previews and final inference use Krea-2-Turbo. The default workflow
+targets a GPU with 32 GB VRAM, and a slower 10 GB preset is also included.
 
-The Krea model weights use the
-[Krea 2 Community License](https://huggingface.co/krea/Krea-2-Raw/blob/main/LICENSE.pdf).
-Review that license before downloading or using the models.
-
-For guidance on curating images, writing captions, comparing previews, and
-choosing a checkpoint, see
+The commands to run are collected first. Configuration rationale, generated
+paths, cache behavior, and recovery details are in the [appendix](#appendix).
+For dataset and checkpoint-selection guidance, see
 [Krea2 character LoRA best practices](KREA2-BEST-PRACTICES.md).
 
-## Download models
+## Commands at a glance
 
-Download the Raw and Turbo DiTs, Qwen-Image VAE, and Qwen3-VL text encoder:
+Default 32 GB workflow:
+
+```shell
+download-krea2.sh
+init-krea2-character.sh --trigger k2v9
+# Add paired images and captions under /musubi/dataset/krea2/images
+prepare-krea2-character.sh
+train-krea2-character.sh
+```
+
+Alternative 32 GB training runs reuse the same prepared cache:
+
+```shell
+train-krea2-character.sh --preset quality
+train-krea2-character.sh --preset attention
+```
+
+For a 10 GB card, use its separate preparation command:
+
+```shell
+prepare-krea2-character.sh --preset 10gb
+train-krea2-character.sh --preset 10gb
+```
+
+Inspect every run with:
+
+```shell
+tensorboard --logdir /musubi/output/krea2-character
+```
+
+## Step-by-step: default 32 GB run
+
+### 1. Download the models
 
 ```shell
 download-krea2.sh
 ```
 
-The download is approximately 62 GB. Files already present as regular files
-are skipped, and Hugging Face downloads are cached beneath `models/hf-cache`.
-The resulting model layout is:
-
-```text
-models/
-    hf-cache/
-    krea2/raw.safetensors
-    krea2/turbo.safetensors
-    vae/qwen_image_vae.safetensors
-    text_encoders/qwen3vl_4b_bf16.safetensors
-```
-
-Use `download-krea2.sh --dry-run` to inspect all four downloads without
-fetching the model weights.
-
-## Initialize the editable workflow
-
-Create the character dataset directories and editable configuration files:
+This downloads approximately 62 GB. The Krea weights use the
+[Krea 2 Community License](https://huggingface.co/krea/Krea-2-Raw/blob/main/LICENSE.pdf),
+which should be reviewed before downloading or using them. To inspect the four
+downloads without fetching anything, run:
 
 ```shell
-init-krea2-character.sh --trigger "k2v9 person"
+download-krea2.sh --dry-run
 ```
 
-Choose a unique trigger plus generic class and pass them together, for example
-`mira7 person`. Without `--trigger`, initialization uses `k2v9 person` for a
-new `samples.txt`. Initialization is safe to rerun: existing files are reported
-and preserved unless `--trigger` is explicitly supplied, in which case the
-detected trigger in `samples.txt` is updated atomically. The generated layout
-stays inside the already-mounted `dataset` and `output` directories:
+### 2. Initialize the character workflow
+
+Choose a distinctive identity trigger and pass only that trigger—not a class
+noun. This guide uses `k2v9`:
+
+```shell
+init-krea2-character.sh --trigger k2v9
+```
+
+Initialization creates editable files under `/musubi/dataset/krea2` and output
+directories under `/musubi/output/krea2-character`. It is safe to rerun:
+existing files are preserved unless `--trigger` is explicitly supplied, which
+updates the detected trigger in `samples.txt` atomically.
+
+### 3. Add paired images and captions
+
+Put 20-30 curated images under `/musubi/dataset/krea2/images`. Every image must
+have a UTF-8 `.txt` caption with the same basename:
+
+```text
+images/001.png
+images/001.txt
+images/002.jpg
+images/002.txt
+```
+
+Describe the subject with an appropriate class noun in ordinary prose, then
+append the unique trigger. For example:
+
+```text
+A woman is shown in a thigh-up front three-quarter view on a bright futuristic ship bridge, holding an open translucent cyan command fan beside her with a calm slight smile. k2v9
+```
+
+Here, `k2v9` is the learned identity and `woman` is an existing base-model
+category. Use the most accurate class for the character; do not combine them
+into an indivisible trigger phrase such as `k2v9 woman`.
+
+### 4. Review the preview prompts
+
+Open `/musubi/dataset/krea2/samples.txt`. Confirm that its `# trigger:` header
+contains `k2v9`, then adjust the generic `person` wording to the character's
+appropriate class if useful. Keep the fixed seeds and core prompt pack stable
+when comparing checkpoints.
+
+The bundled prompts are medium-neutral and do not require photography, realism,
+anime, or another rendering style.
+
+One trigger-free leakage control is active by default. It repeats the first
+portrait's wording and seed without `k2v9`, making the two images a direct A/B
+comparison. If the control starts resembling the trained identity, the LoRA is
+beginning to affect the generic class without being invoked.
+
+If `samples.txt` came from the older combined `trigger class` convention,
+rerunning initialization with `--trigger k2v9` updates the metadata and old
+trigger occurrences but preserves the surrounding prompt prose. Review those
+prompts and add the class noun back as ordinary descriptive language where
+needed.
+
+### 5. Prepare the dataset
+
+```shell
+prepare-krea2-character.sh
+```
+
+Preparation checks images, captions, sample prompts, and trigger consistency,
+then builds latent and text-encoder caches. Run it again whenever an image or
+caption changes.
+
+### 6. Train
+
+```shell
+train-krea2-character.sh
+```
+
+The default run trains for 1,800 steps and generates a checkpoint plus fixed-seed
+Turbo previews every 200 steps.
+
+### 7. Inspect the results
+
+Default artifacts are written beneath:
+
+```text
+/musubi/output/krea2-character/
+```
+
+This includes LoRA checkpoints, previews, resumable state, and TensorBoard
+logs. Start TensorBoard in another shell or tmux pane:
+
+```shell
+tensorboard --logdir /musubi/output/krea2-character
+```
+
+Do not assume the final checkpoint is best. Compare the saved previews and
+prefer the earliest checkpoint that has reliable identity without excessive
+clothing, pose, or background bias.
+
+## Other presets
+
+The default, quality, and attention presets all require the shared 1024-pixel
+cache. Prepare once, then run any of them:
+
+```shell
+prepare-krea2-character.sh
+
+train-krea2-character.sh
+train-krea2-character.sh --preset quality
+train-krea2-character.sh --preset attention
+```
+
+| Preset | Intended hardware | Resolution | Targets | Rank/alpha | Steps | Output directory |
+| --- | --- | --- | --- | --- | --- | --- |
+| `default` | 32 GB VRAM | 1024 | All Linear layers | 32/32 | 1,800 | `output/krea2-character` |
+| `quality` | 32 GB VRAM | 1024 | All Linear layers | 64/64 | 2,700 | `output/krea2-character/quality` |
+| `attention` | 32 GB VRAM | 1024 | Attention projections | 64/64 | 3,600 | `output/krea2-character/attention` |
+| `10gb` | 10 GB VRAM | 640 | Attention projections | 16/16 | 800 | `output/krea2-character/10gb` |
+
+The 10 GB preset needs its own resolution-specific cache:
+
+```shell
+prepare-krea2-character.sh --preset 10gb
+train-krea2-character.sh --preset 10gb
+```
+
+It has completed on a 10 GB RTX 3080. Other cards and hosts may behave
+differently, and substantial system RAM is required for CPU block swapping.
+
+## Common follow-up commands
+
+After changing an image or caption:
+
+```shell
+prepare-krea2-character.sh
+train-krea2-character.sh
+```
+
+Resume from a saved state by forwarding Musubi's `--resume` option:
+
+```shell
+train-krea2-character.sh \
+  --resume /path/to/saved-state-directory
+```
+
+Use the same preset that created the state, for example:
+
+```shell
+train-krea2-character.sh --preset quality \
+  --resume /path/to/quality-saved-state-directory
+```
+
+Choose a completely custom LoRA filename instead of the automatic
+trigger-derived name:
+
+```shell
+train-krea2-character.sh --output_name my-custom-lora
+```
+
+Override a TOML value for one run by passing the corresponding Musubi option:
+
+```shell
+train-krea2-character.sh --max_train_steps 2000
+```
+
+## Quick troubleshooting
+
+| Problem | What to do |
+| --- | --- |
+| Trigger validation fails | Put the exact identity token from `# trigger:` in every primary caption and active sample prompt |
+| Images or captions changed | Run `prepare-krea2-character.sh` again before training |
+| 32 GB run is out of memory | Close other GPU applications; use the `10gb` preset if necessary |
+| 10 GB run is out of memory | Lower `resolution` in `dataset-10gb.toml`, then rerun 10 GB preparation |
+| Training was interrupted | Resume the saved state with the same preset and `--resume` |
+| LoRA copies clothing or backgrounds | Improve captions, compare an earlier checkpoint, or consider regularization |
+
+## Appendix
+
+### A. Generated layout
+
+Initialization scaffolds the following persisted structure:
 
 ```text
 dataset/krea2/
@@ -73,190 +256,166 @@ output/krea2-character/
     10gb/logs/
 ```
 
-If the workflow was initialized before the 32 GB comparison presets were
-added, the existing `dataset.toml` is deliberately preserved. Set
-`bucket_no_upscale = true` in that file to match the current 1024-pixel
-template, then rerun `prepare-krea2-character.sh` to rebuild the shared cache.
-
-Add 20-30 curated images to `dataset/krea2/images`, each beside a UTF-8 `.txt`
-caption with the same basename:
+The model download layout is:
 
 ```text
-images/001.png
-images/001.txt
-images/002.jpg
-images/002.txt
+models/
+    hf-cache/
+    krea2/raw.safetensors
+    krea2/turbo.safetensors
+    vae/qwen_image_vae.safetensors
+    text_encoders/qwen3vl_4b_bf16.safetensors
 ```
 
-Use the same trigger and class in every primary training caption. Caption
-visible variable attributes such as clothing, hairstyle, pose, lighting,
-framing, and background so they do not silently bind to the identity.
+Existing regular files are skipped during downloads. Hugging Face download
+cache data stays beneath `models/hf-cache`.
 
-During preparation, the `# trigger:` header in `samples.txt` is treated as the
-source of truth. Every active sample prompt and every caption in the first
-configured image dataset must contain that exact phrase. A sample immediately
-following `# trigger-check: allow-next` is exempt, which preserves the bundled
-trigger-free leakage-control preview. Optional regularization datasets are
-still checked for missing files, but their captions are deliberately excluded
-from trigger validation. Legacy sample templates are recognized through their
-original `Replace every occurrence of ...` comment.
+### B. Trigger and caption rules
 
-The bundled preview prompts are medium-neutral: they vary framing, viewpoint,
-pose, clothing, and setting without requiring photography, realism, or a
-specific illustration style. They can therefore be used for photographic,
-anime, and other character LoRAs, or replaced with prompts tailored to the
-dataset's intended style.
+Keep the unique identity trigger separate from the class noun:
 
-The training launcher also uses the first token in the trigger phrase as a
-filesystem-safe LoRA name component. For example, `mira7 person` produces
-`krea2-mira7-character-lora`, with the selected preset suffix retained. Pass an
-explicit Musubi output name to opt out or choose a completely custom name:
-
-```shell
-train-krea2-character.sh --output_name my-custom-lora
+```text
+k2v9   = learned identity
+woman  = existing base-model category
 ```
 
-For an unusual workflow, override only the validation value or disable the
-trigger check explicitly:
+Recommended caption pattern:
+
+```text
+<literal description using the class noun>. k2v9
+```
+
+Describe only what is visible in that image. Mention variable details such as
+framing, viewpoint, expression, clothing, accessories, props, lighting, and
+background when they should remain prompt-controllable. Avoid repeatedly
+describing stable facial identity traits that should be absorbed into `k2v9`.
+
+Use one spelling of the identity trigger everywhere. A readable, distinctive
+fictional name is acceptable and does not need to be one tokenizer token. Do
+not use multiple aliases for the same identity.
+
+At inference, both of these are reasonable:
+
+```text
+A portrait of k2v9
+A portrait of k2v9, a woman wearing a naval-style uniform
+```
+
+The second supplies more explicit semantic structure, while the trigger itself
+should carry the identity.
+
+`samples.txt` is the trigger source of truth. Preparation requires its exact
+trigger in every primary caption and active sample prompt. A prompt immediately
+following `# trigger-check: allow-next` is exempt so the bundled trigger-free
+leakage control can remain active. Regularization captions are not
+required to contain the identity trigger.
+
+For an unusual workflow, override the validation trigger or explicitly skip
+only the trigger check:
 
 ```shell
-prepare-krea2-character.sh --trigger "mira7 person"
+prepare-krea2-character.sh --trigger k2v9
 prepare-krea2-character.sh --skip-trigger-check
 ```
 
-Thirty curated 1024x1024 images are already a strong dataset shape for these
-presets. The shared dataset config keeps native 1024 buckets and disables
-upscaling; spend additional GPU time on LoRA capacity and checkpoint comparison
-rather than enlarging 1024-pixel sources to 1280.
+Image and caption existence checks still run when trigger checking is skipped.
 
-## 32 GB comparison presets
+### C. Preset details
 
-The default configuration is the reference run. Two additional presets provide
-a controlled higher-capacity comparison while keeping the data, 1024-pixel
-resolution, seed, precision, and preview cadence constant:
+The three 32 GB presets keep the dataset, 1024-pixel resolution, seed, BF16
+precision, scaled FP8 base weights, gradient checkpointing, SDPA, constant
+scheduler, AdamW8bit, checkpoint cadence, and Turbo preview pack fixed.
 
-| Run | Launcher preset | Targets | Rank/alpha | Learning rate | Steps |
-| --- | --- | --- | --- | --- | --- |
-| A - reference | `default` | All Linear layers | 32/32 | `1e-4` | 1,800 |
-| B - higher capacity | `quality` | All Linear layers | 64/64 | `7e-5` | 2,700 |
-| C - longer attention-only | `attention` | Attention projections | 64/64 | `5e-5` | 3,600 |
+The differences are deliberate:
 
-All three use `dataset/krea2/dataset.toml` and its shared cache. Prepare once
-after adding or changing images or captions:
+- `default` is the rank-32 reference run at `1e-4` for 1,800 steps.
+- `quality` doubles all-linear rank to 64, lowers LR to `7e-5`, and runs for
+  2,700 steps.
+- `attention` uses rank 64 at `5e-5`, narrows training to 140 attention
+  projections, and runs for 3,600 steps to preserve prompt adherence during a
+  longer experiment.
 
-```shell
-prepare-krea2-character.sh
-```
+With 30 images and batch size 1, those are approximately 60, 90, and 120
+dataset passes. All save checkpoints, state, and fixed-seed Turbo previews
+every 200 steps. Frequent saves are intentional because later checkpoints may
+strengthen likeness while weakening prompt control.
 
-Then run whichever comparisons you want:
+All 32 GB presets use Musubi's resolution-aware `krea2_shift` schedule. The
+shared dataset keeps 1024 buckets enabled with `bucket_no_upscale = true`.
+Clean 1024x1024 sources therefore enter the square bucket without resizing or
+cropping, while future non-square additions remain supported.
 
-```shell
-train-krea2-character.sh
-train-krea2-character.sh --preset quality
-train-krea2-character.sh --preset attention
-```
+### D. Preparation and cache behavior
 
-With 30 images and batch size 1, the runs are approximately 60, 90, and 120
-dataset passes. Each saves checkpoints, resumable state, and fixed-seed Turbo
-previews every 200 steps. The default intentionally continues beyond step 1,200
-so that 1,400, 1,600, and 1,800 can be compared; this does not imply that the
-last checkpoint is best. Likeness can peak before clothing, pose, or background
-bias becomes excessive. The preset outputs are isolated beneath
-`output/krea2-character`, `output/krea2-character/quality`, and
-`output/krea2-character/attention`.
-
-## Experimental 10 GB preset
-
-The low-VRAM preset has completed on a 10 GB RTX 3080, but other cards and hosts
-may behave differently. It needs substantial system RAM for CPU block swapping;
-64 GB is preferable, while 32 GB plus a large swap file may work very slowly.
-
-Initialize or rerun initialization first so the additional non-destructive
-templates are present:
-
-```shell
-init-krea2-character.sh
-```
-
-Prepare and train the 640-pixel, rank-16, 800-step run:
-
-```shell
-prepare-krea2-character.sh --preset 10gb
-train-krea2-character.sh --preset 10gb
-```
-
-The preset uses BF16, scaled FP8 base weights, gradient checkpointing, SDPA,
-26 of 28 main blocks swapped to CPU, H2D-only swapping with a one-block ring,
-batch size 1, AdamW8bit, and attention-only LoRA targets. Text-encoder caching
-runs on CPU. Training-time sampling and Turbo weight loading are disabled
-because Turbo previews cannot be combined with block swapping.
-
-It shares `dataset/krea2/images` with the 32 GB workflows but uses its own
-resolution-specific cache. Re-run preparation after changing images, captions,
-or the configured resolution. Outputs and TensorBoard logs are written under
-`output/krea2-character/10gb`.
-
-If it runs out of VRAM, close other GPU applications and edit
-`dataset-10gb.toml` to try 512, 448, or 384 pixels, then reduce rank and alpha
-in `train-10gb.toml`. Rebuild the cache with
-`prepare-krea2-character.sh --preset 10gb` before retrying training. Expect
-block swapping to make training considerably slower than the default 32 GB
-workflow.
-
-## Default preparation and training
-
-Rebuild both caches whenever an image or caption changes:
-
-```shell
-prepare-krea2-character.sh
-```
-
-Preparation validates every image dataset declared in `dataset.toml`, then
-removes only generated Krea2 cache files (`*_kr2.safetensors` and
+Preparation validates every dataset declared in the selected dataset TOML. It
+then removes only generated Krea2 cache files (`*_kr2.safetensors` and
 `*_kr2_te.safetensors`) from each configured cache directory before rebuilding
-them. Other files are preserved, while deleted or renamed images cannot remain
-silently present through stale caches.
+them. Other files are preserved, and deleted or renamed images cannot survive
+through stale cache entries.
 
-Then start training:
+The three 32 GB presets share `dataset/krea2/cache`. The 10 GB preset uses
+`dataset/krea2/cache-10gb` because its 640-pixel latents are incompatible with
+the 1024-pixel cache. Run the matching preparation command whenever images,
+captions, or resolution change.
 
-```shell
-train-krea2-character.sh
+### E. 10 GB implementation details
+
+The `10gb` preset uses BF16, scaled FP8 base weights, gradient checkpointing,
+SDPA, AdamW8bit, batch size 1, rank/alpha 16, attention-only targets, and 26 of
+28 main blocks swapped to CPU. Text-encoder caching runs on CPU.
+
+Training-time sampling and Turbo weight loading are disabled because Musubi
+does not allow Turbo previews together with block swapping. Expect training to
+be much slower than the 32 GB workflow. Prefer 64 GB of system RAM; 32 GB plus
+a large swap file may work very slowly.
+
+If 640 pixels still runs out of VRAM, edit `dataset-10gb.toml` and try 512,
+448, or 384 pixels. Rebuild the 10 GB cache after changing resolution. Reducing
+rank and alpha in `train-10gb.toml` is another fallback.
+
+### F. Persistence, overrides, and automatic names
+
+Initialization deliberately preserves existing TOMLs. Rerunning it installs
+missing templates but does not overwrite edits or automatically apply newer
+template defaults to an existing workflow. Compare an old persisted TOML with
+the bundled template when adopting changed defaults.
+
+The same preservation rule applies to `samples.txt`. Supplying `--trigger`
+updates its detected trigger without replacing customized prompts, so migrations
+from a combined trigger/class phrase may need a one-time manual prompt edit.
+
+The launcher forwards all arguments except its own `--preset` selector to
+Musubi, so command-line values override the selected TOML. This includes model
+paths, output paths, step counts, configuration files, and `--resume`.
+
+Unless `--output_name` is supplied, the launcher reads the trigger from
+`samples.txt` and inserts it into the configured name. With `k2v9`, the default
+names are:
+
+```text
+krea2-k2v9-character-lora
+krea2-k2v9-character-lora-quality
+krea2-k2v9-character-lora-attention
+krea2-k2v9-character-lora-10gb
 ```
 
-Additional arguments other than the launcher's `--preset` option are forwarded
-to Musubi and override matching values in the selected training TOML. For
-example, resume the default workflow from a saved state with:
+### G. Why RAW training and Turbo previews
 
-```shell
-train-krea2-character.sh --resume /musubi/output/krea2-character/krea2-mira7-character-lora-state
-```
+Krea2 provides two DiT checkpoints. Krea-2-Raw is the undistilled training
+checkpoint; Krea-2-Turbo is the distilled few-step inference checkpoint. The
+recommended workflow is to train the LoRA on Raw and evaluate it on Turbo.
 
-The default configuration uses 1024-pixel buckets without upscaling, BF16,
-scaled FP8 base weights, gradient checkpointing, SDPA, Musubi's resolution-aware
-`krea2_shift`, AdamW8bit at `1e-4`, and rank/alpha 32. It trains for 1,800
-steps and writes checkpoints, resumable state, Turbo previews, and TensorBoard
-logs beneath `output/krea2-character`. Checkpoints and previews are produced
-every 200 steps. Block swapping is intentionally disabled because Musubi does
-not allow it together with training-time Turbo previews.
+The bundled Turbo preview pack uses 1024x1024 images, 8 inference steps, CFG
+off (`--l 1` in Musubi's sample syntax), and fixed seeds. Resident Turbo caching
+is disabled to avoid holding a second DiT in system RAM for the entire run.
+Block swapping is disabled in 32 GB presets because Musubi cannot combine it
+with Turbo sampling.
 
-Initialization preserves an existing `train.toml`. To extend a workflow created
-with the previous 1,200-step template, either set `max_train_steps = 1800` and
-`save_last_n_steps = 2000` in that file, or override the duration for a new run:
+## Further reading
 
-```shell
-train-krea2-character.sh --max_train_steps 1800
-```
-
-To continue an existing 1,200-step run, also resume its saved state rather than
-starting over:
-
-```shell
-train-krea2-character.sh --max_train_steps 1800 \
-  --resume /musubi/output/krea2-character/krea2-mira7-character-lora-state
-```
-
-Start TensorBoard in another shell or tmux pane with:
-
-```shell
-tensorboard --logdir /musubi/output/krea2-character
-```
+- [Krea2 character LoRA best practices](KREA2-BEST-PRACTICES.md)
+- [Musubi Tuner Krea2 documentation](https://github.com/kohya-ss/musubi-tuner/blob/main/docs/krea2.md)
+- [Diffusers Krea2 LoRA guide](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_krea2.md)
+- [Krea training documentation](https://www.krea.ai/docs/user-guide/features/training)
+- [Krea 2 Community License](https://www.krea.ai/krea-2-licensing)
+- [Krea Acceptable Use Policy](https://www.krea.ai/krea-2-use-policy)

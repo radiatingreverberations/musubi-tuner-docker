@@ -1,18 +1,19 @@
 # trigger: __KREA2_TRIGGER__
-# Run init-krea2-character.sh --trigger "token class" to update this file.
+# Run init-krea2-character.sh --trigger unique-token to update this file.
 # Turbo preview settings: 1024x1024, 8 steps, CFG off, and fixed seeds.
 
-A neutral close head-and-shoulders portrait of __KREA2_TRIGGER__, facing forward, calm expression, clear facial features, soft even lighting, plain background. --w 1024 --h 1024 --s 8 --l 1 --d 42
+A person is shown in a neutral close head-and-shoulders portrait, facing forward with a calm expression, clear facial features, soft even lighting, and a plain background. __KREA2_TRIGGER__ --w 1024 --h 1024 --s 8 --l 1 --d 42
 
-A three-quarter-view portrait of __KREA2_TRIGGER__, looking slightly to one side, relaxed expression, different clothing, simple setting. --w 1024 --h 1024 --s 8 --l 1 --d 43
+A person is shown in a three-quarter-view portrait, looking slightly to one side with a relaxed expression, different clothing, and a simple setting. __KREA2_TRIGGER__ --w 1024 --h 1024 --s 8 --l 1 --d 43
 
-A half-body scene of __KREA2_TRIGGER__ seated at an outdoor cafe, different casual clothing, natural pose, uncluttered surroundings. --w 1024 --h 1024 --s 8 --l 1 --d 44
+A person is shown seated at an outdoor cafe in a natural half-body pose, wearing different casual clothing in uncluttered surroundings. __KREA2_TRIGGER__ --w 1024 --h 1024 --s 8 --l 1 --d 44
 
-A full-body view of __KREA2_TRIGGER__ standing in a modern interior, entirely different outfit, relaxed neutral pose, balanced proportions. --w 1024 --h 1024 --s 8 --l 1 --d 45
+A person is shown standing in a modern interior in a relaxed full-body pose, wearing an entirely different outfit with balanced proportions. __KREA2_TRIGGER__ --w 1024 --h 1024 --s 8 --l 1 --d 45
 
-An expressive portrait of __KREA2_TRIGGER__ in a different setting, recognizable identity, clear silhouette, controlled details, simple background. --w 1024 --h 1024 --s 8 --l 1 --d 46
+A person is shown in an expressive portrait in a different setting, with a clear silhouette, controlled details, and a simple background. __KREA2_TRIGGER__ --w 1024 --h 1024 --s 8 --l 1 --d 46
 
-# Optional leakage control: uncomment to see whether the active LoRA changes a
-# generic person when the trigger is absent.
+# Trigger-free leakage control paired with the first portrait's wording and
+# seed. If it starts resembling the trained identity, prefer an earlier
+# checkpoint or reduce LoRA strength.
 # trigger-check: allow-next
-# A neutral head-and-shoulders portrait of a person, calm expression, soft even lighting, plain background. --w 1024 --h 1024 --s 8 --l 1 --d 47
+A person is shown in a neutral close head-and-shoulders portrait, facing forward with a calm expression, clear facial features, soft even lighting, and a plain background. --w 1024 --h 1024 --s 8 --l 1 --d 42

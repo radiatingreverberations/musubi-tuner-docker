@@ -181,7 +181,7 @@ fi
 AUTO_OUTPUT_NAME_ARGS=()
 if [[ "$OUTPUT_NAME_EXPLICIT" != true ]]; then
     require_effective_file "$TRIGGER_FILE" "Krea2 trigger metadata" \
-        "Run init-krea2-character.sh --trigger \"token class\" or pass --output_name explicitly."
+        "Run init-krea2-character.sh --trigger k2v9 or pass --output_name explicitly."
     require_effective_file "$TRIGGER_WORDS_SCRIPT" "trigger-word helper" \
         "Use an image containing the bundled trigger-word helper."
     if [[ -z "$OUTPUT_NAME" ]]; then
@@ -195,7 +195,7 @@ if [[ "$OUTPUT_NAME_EXPLICIT" != true ]]; then
             --base-name "$OUTPUT_NAME" \
             --insert-after-prefix krea2
     )"; then
-        echo "Run init-krea2-character.sh --trigger \"token class\" or pass --output_name explicitly." >&2
+        echo "Run init-krea2-character.sh --trigger k2v9 or pass --output_name explicitly." >&2
         exit 2
     fi
     AUTO_OUTPUT_NAME_ARGS=(--output_name "$GENERATED_OUTPUT_NAME")

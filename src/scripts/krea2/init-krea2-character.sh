@@ -10,12 +10,12 @@ TEMPLATE_DIR="$SCRIPT_DIR/templates"
 TRIGGER_WORDS_SCRIPT="$SCRIPTS_DIR/trigger_words.py"
 WORKFLOW_DIR="$BASE_DIR/dataset/krea2"
 OUTPUT_DIR="$BASE_DIR/output/krea2-character"
-DEFAULT_TRIGGER="k2v9 person"
+DEFAULT_TRIGGER="k2v9"
 TRIGGER="$DEFAULT_TRIGGER"
 TRIGGER_EXPLICIT=false
 
 print_usage() {
-    printf 'Usage: %s [--trigger "token class"]\n' "$(basename "$0")"
+    printf 'Usage: %s [--trigger unique-token]\n' "$(basename "$0")"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -135,6 +135,6 @@ render_or_update_samples "$TEMPLATE_DIR/samples.txt" "$WORKFLOW_DIR/samples.txt"
 echo
 echo "Krea2 character workflow initialized in $WORKFLOW_DIR"
 echo "Add paired images and .txt captions to $WORKFLOW_DIR/images."
-echo "Set or update the preview trigger with: init-krea2-character.sh --trigger \"token class\""
+echo "Set or update the identity trigger with: init-krea2-character.sh --trigger k2v9"
 echo "32 GB presets: --preset quality or --preset attention"
 echo "Low-VRAM preset: --preset 10gb"

@@ -9,8 +9,9 @@ bundled TOML presets remain the source of truth for exact Musubi settings.
 
 - Train the LoRA on Krea-2-Raw; preview and use it on Krea-2-Turbo.
 - Prefer 20-30 strong, varied images over a larger repetitive dataset.
-- Put one unique trigger plus class, such as `mira7 person`, in every primary
-  caption.
+- Put one unique identity trigger, such as `k2v9`, in every primary caption.
+- Describe the subject with an appropriate class noun separately from the
+  trigger.
 - Caption only visible attributes, especially details that should remain
   prompt-controllable.
 - Reuse the same prompts and seeds at every checkpoint.
@@ -50,17 +51,22 @@ checkpoints.
 
 ## Write captions that disentangle the character
 
-Use one short, invented token followed by a generic class noun. Put the unique
-token first because the launcher also uses that first token in checkpoint
-names:
+Use one short, distinctive identity token. Keep the class noun separate: the
+token represents the learned identity, while a word such as `woman`, `man`, or
+`person` supplies a category the base model already understands. The launcher
+also uses the trigger in checkpoint names:
 
 ```text
-mira7 person
+k2v9 = learned identity
+woman = existing base-model category
 ```
 
-Use the exact same phrase in every primary caption and in `samples.txt`. Avoid
-aliases and spelling variations. A legal name is usually a worse identifier
-than a neutral invented token.
+Use the exact same trigger in every primary caption and in `samples.txt`, but
+write the class noun naturally in the description. Choose the most accurate
+stable class: for an adult woman, prefer `woman` over the less specific
+`person`. Avoid aliases and spelling variations. A readable, distinctive
+fictional name can work; it does not need to be one tokenizer token. A legal
+name is usually a worse identifier than a neutral invented token.
 
 Describe what is visible in each image—no more and no less. A close portrait
 should not describe shoes or an unseen outfit; a full-body image can describe
@@ -75,10 +81,21 @@ A useful caption answers three questions:
 Example captions:
 
 ```text
-mira7 person, close portrait, looking slightly left, loose dark hair, plain background
-mira7 person, seated at an outdoor cafe, sunglasses, light jacket, city street behind
-mira7 person, full-body view, standing, red coat, neutral pose, modern interior
+A woman is shown in a close portrait, looking slightly left with loose dark hair against a plain background. k2v9
+A woman is seated at an outdoor cafe wearing sunglasses and a light jacket, with a city street behind her. k2v9
+A woman stands in a relaxed full-body pose wearing a red coat in a modern interior. k2v9
 ```
+
+The recommended pattern is:
+
+```text
+<literal description using the class noun>. k2v9
+```
+
+Do not treat `k2v9 woman` as one indivisible trigger phrase. At inference,
+either `A portrait of k2v9` or `A portrait of k2v9, a woman wearing a blue
+uniform` can work; the second form gives the base model more explicit semantic
+structure.
 
 Mention recurring clothing, glasses, hairstyles, props, lighting, and settings
 when they should remain prompt-controllable. Do not add invisible details,
@@ -133,11 +150,13 @@ A compact evaluation pack should cover:
 - full-body composition
 - clothing and background changes
 - a different rendering style, when style portability matters
-- the optional trigger-free leakage prompt
+- the paired trigger-free leakage control
 
 The trigger-free prompt answers an important question: does enabling the LoRA
-alter a generic character even when the trigger is absent? If it does, the LoRA
-may be too strong or overfit.
+alter a generic character even when the trigger is absent? The bundled control
+uses the same wording and seed as the first triggered portrait, isolating the
+effect of the identity token. If the control starts resembling the trained
+character, the LoRA may be too strong or overfit.
 
 For a more rigorous comparison, generate the same grid at each checkpoint and
 compare it with the held-out reference images. Face-embedding similarity can be
@@ -198,7 +217,8 @@ publicity, biometric-data, and platform-policy obligations.
 - [ ] One identity or character concept, without conflicting redesigns
 - [ ] Weak images and near-duplicates removed
 - [ ] Useful spread of framing, viewpoints, expressions, and settings
-- [ ] Exact trigger phrase in every primary caption
+- [ ] Exact identity trigger in every primary caption
+- [ ] Appropriate class noun used naturally and separately from the trigger
 - [ ] Only visible attributes described
 - [ ] `samples.txt` trigger and prompts reviewed
 - [ ] Caches rebuilt after the last image or caption change
@@ -210,6 +230,7 @@ publicity, biometric-data, and platform-policy obligations.
 
 - [Musubi Tuner Krea2 documentation](https://github.com/kohya-ss/musubi-tuner/blob/main/docs/krea2.md)
 - [Diffusers Krea2 LoRA guide](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_krea2.md)
+- [Krea2 LoRA trainer captioning reference](https://huggingface.co/spaces/multimodalart/krea2-lora-trainer/blob/560e932f0e5d81ed9a09b7ea0038e92da4f0ba01/caption.py)
 - [Krea training documentation](https://www.krea.ai/docs/user-guide/features/training)
 - [Krea 2 Community License](https://www.krea.ai/krea-2-licensing)
 - [Krea Acceptable Use Policy](https://www.krea.ai/krea-2-use-policy)

@@ -42,7 +42,7 @@ def read_trigger(samples_path: Path) -> str:
     if trigger is None:
         raise TriggerWordsError(
             f"No trigger metadata was found in {samples_path}. "
-            "Add '# trigger: token class'."
+            "Add '# trigger: unique-token'."
         )
     return trigger
 
@@ -114,7 +114,7 @@ def set_samples_trigger(
         if old_trigger is None:
             raise TriggerWordsError(
                 f"Cannot detect the existing trigger in {samples_path}. "
-                "Add '# trigger: token class' or edit the file manually."
+                "Add '# trigger: unique-token' or edit the file manually."
             )
 
         updated = original.replace(old_trigger, trigger)
@@ -199,7 +199,7 @@ def validate_dataset(
         if trigger is None:
             errors.append(
                 f"No trigger metadata was found in {samples_path}. "
-                "Add '# trigger: token class' or pass --trigger."
+                "Add '# trigger: unique-token' or pass --trigger."
             )
 
         prompts = active_sample_prompts(samples_text)
