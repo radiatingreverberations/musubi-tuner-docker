@@ -110,7 +110,9 @@ activated. WAN helper scripts are available directly through `PATH`.
 Interactive SSH logins automatically start or attach to the tmux session named
 `musubi`, so jobs continue when the connection closes. Press `Ctrl-b`, then `d`
 to detach without stopping them; the next interactive login reattaches. Press
-`Ctrl-b`, then `c` to create another tmux window.
+`Ctrl-b`, then `c` to create another tmux window. When the session is first
+created, the welcome and quickstart text is printed inside tmux so it remains
+visible after tmux takes over the terminal.
 
 Remote commands and SFTP, scp, rsync, and forwarding-only connections do not
 enter tmux. A direct remote command therefore behaves normally:

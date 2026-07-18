@@ -5,7 +5,10 @@
 case "$-" in
     *i*)
         if [ -n "${SSH_TTY:-}" ] && [ -z "${TMUX:-}" ] && command -v tmux >/dev/null 2>&1; then
-            exec tmux new-session -A -s musubi bash -l
+            # Print the welcome inside a newly created session, after tmux has
+            # taken over the terminal. Reattaching leaves the session untouched.
+            exec tmux new-session -A -s musubi \
+                /bin/sh -c 'cat /etc/motd; exec /bin/bash -l'
         fi
         ;;
 esac
