@@ -15,6 +15,9 @@ docker run --rm --gpus=all -p 2222:2222 \
   ghcr.io/radiatingreverberations/musubi-tuner-ssh:latest
 ```
 
+Add `-it` when keeping a local or provider console attached. Pressing `Ctrl-C`
+in that attached console gracefully stops the container.
+
 At startup the image prints the username, detected public address, SSH host-key
 fingerprint, and a connection command. Hosting providers may map port 2222 to a
 different external port, so prefer the address and port shown in their
