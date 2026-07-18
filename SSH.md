@@ -75,6 +75,16 @@ helps detect accidental endpoint or image changes, but it does not provide
 exclusive server authentication against an attacker who possesses the image.
 Do not reuse this host key for unrelated infrastructure.
 
+The CI-pinned host key used by published images has this fingerprint:
+
+```text
+SHA256:/5bQkL5SFEVPqTwgxNG0ElFxTxm8J7FGnQNnDndGDFM
+```
+
+Locally built images and deployments using `SSH_HOST_ED25519_KEY_B64` at
+runtime may have a different fingerprint. Any other change should correspond
+to a documented key rotation.
+
 The release pipeline supplies the pinned key through the
 `SSH_HOST_ED25519_KEY_B64` BuildKit secret. The same variable can be set at
 runtime to override the image key with a deployment-specific identity. Reusing

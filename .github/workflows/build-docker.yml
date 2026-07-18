@@ -39,6 +39,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Require pinned SSH host key for published images
+        if: ${{ inputs.push_images }}
+        shell: bash
+        run: |
+          if [ -z "${SSH_HOST_ED25519_KEY_B64}" ]; then
+            echo "::error::Configure the repository Actions secret SSH_HOST_ED25519_KEY_B64 before publishing images."
+            exit 1
+          fi
+
       - name: Build images
         uses: ./.github/actions/bake-build
         with:
