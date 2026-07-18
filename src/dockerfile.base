@@ -64,9 +64,7 @@ RUN sed -i 's/\r$//' /etc/profile.d/10-musubi-venv.sh && \
 
 # Provide a tmux configuration suited to interactive cloud sessions.
 RUN printf "set -g mouse on\nset -g default-terminal 'screen-256color'\nset -g default-shell /bin/bash\nset -g default-command 'bash -l'\n" \
-        >/root/.tmux.conf && \
-    mkdir -p /etc/skel && \
-    cp /root/.tmux.conf /etc/skel/.tmux.conf
+        >/etc/tmux.conf
 
 # Provide a default single-GPU Accelerate configuration.
 RUN mkdir -p \

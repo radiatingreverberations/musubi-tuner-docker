@@ -25,6 +25,10 @@ COPY entrypoint.ssh.sh /usr/local/bin/musubi-ssh-entrypoint
 RUN sed -i 's/\r$//' /usr/local/bin/musubi-ssh-entrypoint && \
     chmod +x /usr/local/bin/musubi-ssh-entrypoint
 
+COPY init-ssh-tmux.sh /etc/profile.d/20-musubi-ssh-tmux.sh
+RUN sed -i 's/\r$//' /etc/profile.d/20-musubi-ssh-tmux.sh && \
+    chmod 0644 /etc/profile.d/20-musubi-ssh-tmux.sh
+
 ENV SSH_USER=""
 
 ENTRYPOINT ["/usr/local/bin/musubi-ssh-entrypoint"]

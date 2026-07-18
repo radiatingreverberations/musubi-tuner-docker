@@ -73,7 +73,7 @@ chmod 644 "${public_host_key}"
 host_fingerprint="$(ssh-keygen -l -E sha256 -f "${private_host_key}" | awk '{print $2}')"
 
 if ! id -u "${SSH_USER}" >/dev/null 2>&1; then
-    useradd -M -d /musubi -s /bin/bash -u 0 -o "${SSH_USER}"
+    useradd -K UID_MIN=0 -M -d /musubi -s /bin/bash -u 0 -o "${SSH_USER}"
 else
     usermod -o -u 0 -d /musubi -s /bin/bash "${SSH_USER}"
 fi
@@ -133,14 +133,25 @@ echo " Provider-assigned addresses and ports may differ; check the provider dash
 echo "================================================================================"
 echo
 
-cat >/etc/motd <<'EOF'
+cat >/etc/motd <<EOF
 You are connected to Musubi Tuner.
 
 Working directory: /musubi
 Python environment: /opt/venv
 
-To forward a loopback service such as TensorBoard, reconnect with:
-  ssh -p 2222 -L <local-port>:127.0.0.1:<service-port> <user>@<host>
+Interactive SSH logins start or attach to the tmux session "musubi".
+  Detach without stopping jobs: Ctrl-b, then d
+  Create another window:         Ctrl-b, then c
+
+TensorBoard displays training metrics. Start it in another tmux window:
+  tensorboard --logdir /musubi/output --host 127.0.0.1 --port 6006
+
+Then reconnect from your computer, adding the tunnel to your usual SSH command:
+  ssh -p EXTERNAL_SSH_PORT -L 6006:127.0.0.1:6006 ${SSH_USER}@HOST
+
+Use the external host and SSH port shown by your provider.
+
+Open http://127.0.0.1:6006 locally.
 EOF
 
 cat >/etc/ssh/sshd_config <<EOF

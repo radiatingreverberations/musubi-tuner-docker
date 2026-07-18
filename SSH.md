@@ -85,11 +85,18 @@ an unencrypted OpenSSH Ed25519 private key.
 ## Forward a local service
 
 Local TCP forwarding is permitted only to loopback addresses inside the
-container. For example, after starting TensorBoard on port 6006 inside the SSH
-session, reconnect with:
+container. TensorBoard is included for viewing training metrics. Create another
+tmux window with `Ctrl-b`, then `c`, and start it on loopback port 6006:
 
 ```shell
-ssh -p 2222 -L 6006:127.0.0.1:6006 trainer@HOST
+tensorboard --logdir /musubi/output --host 127.0.0.1 --port 6006
+```
+
+From your computer, reconnect with a local forward, substituting the external
+SSH host and port assigned by the deployment:
+
+```shell
+ssh -p EXTERNAL_SSH_PORT -L 6006:127.0.0.1:6006 trainer@HOST
 ```
 
 Then open `http://127.0.0.1:6006` locally. Remote forwarding, SSH-agent
@@ -98,9 +105,16 @@ forwarding, Unix-socket forwarding, tunneling, and X11 forwarding are disabled.
 ## Session environment
 
 SSH shells start in `/musubi` with the baked Python environment at `/opt/venv`
-activated. WAN helper scripts are available directly through `PATH`. Long jobs
-can be kept alive with the included tmux installation:
+activated. WAN helper scripts are available directly through `PATH`.
+
+Interactive SSH logins automatically start or attach to the tmux session named
+`musubi`, so jobs continue when the connection closes. Press `Ctrl-b`, then `d`
+to detach without stopping them; the next interactive login reattaches. Press
+`Ctrl-b`, then `c` to create another tmux window.
+
+Remote commands and SFTP, scp, rsync, and forwarding-only connections do not
+enter tmux. A direct remote command therefore behaves normally:
 
 ```shell
-tmux new-session -A -s musubi
+ssh -p 2222 trainer@HOST nvidia-smi
 ```
