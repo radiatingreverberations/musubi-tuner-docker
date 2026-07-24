@@ -41,6 +41,67 @@ Inspect every run with:
 tensorboard --logdir /musubi/output/krea2-character
 ```
 
+## Upload checkpoints to Hugging Face
+
+Create a private Hugging Face model repository before training, then create a
+fine-grained token with write access to that repository. Enter the token inside
+the training shell or tmux session without putting it in shell history:
+
+```shell
+read -rsp "Hugging Face write token: " HF_TOKEN
+echo
+export HF_TOKEN
+```
+
+Add the repository to any Krea2 training command:
+
+```shell
+train-krea2-character.sh --hf-repo OWNER/REPO
+```
+
+The launcher verifies that the existing repository is accessible and writable,
+then creates a token-free `run.json` before starting Accelerate. It prints the
+exact destination, which defaults to a new UTC-stamped path:
+
+```text
+Hugging Face repository:        OWNER/REPO
+Hugging Face path:              krea2/krea2-k2v9-character-lora/20260724T120000Z
+Hugging Face artifacts:         LoRA checkpoints only (synchronous)
+```
+
+Supply a stable or descriptive path when preferred:
+
+```shell
+train-krea2-character.sh \
+  --hf-repo OWNER/REPO \
+  --hf-path krea2/k2v9/default-search
+```
+
+Musubi uploads every periodic `.safetensors` checkpoint and the final
+checkpoint synchronously. Training pauses while each upload is attempted.
+Generated previews, resumable optimizer state, TensorBoard logs, source images,
+and captions remain local.
+
+The preflight stops before training if authentication, repository access, or
+the initial write fails. Later checkpoint uploads use Musubi's native
+best-effort behavior: an upload error is logged and training continues without
+automatic retry.
+
+Download all checkpoints for a run on another machine with the Hugging Face
+CLI:
+
+```shell
+hf download OWNER/REPO \
+  --include 'krea2/krea2-k2v9-character-lora/20260724T120000Z/*.safetensors' \
+  --local-dir ./krea2-checkpoints
+```
+
+The token can be removed from the shell after training:
+
+```shell
+unset HF_TOKEN
+```
+
 ## Step-by-step: default 32 GB run
 
 ### 1. Download the models
@@ -268,6 +329,7 @@ train-krea2-character.sh --max_train_steps 2000
 | 32 GB run is out of memory | Close other GPU applications; use the `10gb` preset if necessary |
 | 10 GB run is out of memory | Lower `resolution` in `dataset-10gb.toml`, then rerun 10 GB preparation |
 | Training was interrupted | Resume the saved state with the same preset and `--resume` |
+| Hugging Face preflight fails | Confirm `HF_TOKEN` is set, the model repository already exists, and the token has write access |
 | LoRA copies clothing or backgrounds | Improve captions, compare an earlier checkpoint, or consider regularization |
 
 ## Appendix
@@ -453,9 +515,10 @@ krea2-k2v9-character-lora-quality
 krea2-k2v9-character-lora-10gb
 ```
 
-The output tree must outlive an ephemeral training VM. Mount it from persistent
-storage or copy checkpoints away while the VM is running; this wrapper does not
-yet configure remote checkpoint upload or remote resume.
+The output tree must outlive an ephemeral training VM unless checkpoint upload
+is enabled with `--hf-repo`. That option copies LoRA checkpoints to an existing
+Hugging Face model repository, but resumable state remains local. Mount the
+output tree from persistent storage when remote resume is required.
 
 ### G. Why RAW training and Turbo previews
 

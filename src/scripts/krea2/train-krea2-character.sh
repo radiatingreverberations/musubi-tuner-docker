@@ -10,12 +10,17 @@ WORKFLOW_DIR="$BASE_DIR/dataset/krea2"
 TRAIN_SCRIPT="$MUSUBI_HOME/src/musubi_tuner/krea2_train_network.py"
 TRIGGER_FILE="$WORKFLOW_DIR/samples.txt"
 TRIGGER_WORDS_SCRIPT="$SCRIPTS_DIR/trigger_words.py"
+HF_UPLOAD_SCRIPT="$SCRIPT_DIR/huggingface_checkpoint_upload.py"
 
 print_preset_usage() {
-    printf 'Launcher preset: --preset default|baseline|quality|10gb\n' >&2
+    printf 'Launcher options: --preset default|baseline|quality|10gb [--hf-repo OWNER/REPO] [--hf-path PATH]\n' >&2
 }
 
 PRESET="default"
+HF_REPO=""
+HF_PATH=""
+HF_REPO_SET=false
+HF_PATH_SET=false
 FORWARDED_ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -32,6 +37,36 @@ while [[ $# -gt 0 ]]; do
             PRESET="${1#*=}"
             shift
             ;;
+        --hf-repo)
+            if [[ $# -lt 2 ]]; then
+                echo "--hf-repo requires an OWNER/REPO value." >&2
+                print_preset_usage
+                exit 64
+            fi
+            HF_REPO="$2"
+            HF_REPO_SET=true
+            shift 2
+            ;;
+        --hf-repo=*)
+            HF_REPO="${1#*=}"
+            HF_REPO_SET=true
+            shift
+            ;;
+        --hf-path)
+            if [[ $# -lt 2 ]]; then
+                echo "--hf-path requires a repository path." >&2
+                print_preset_usage
+                exit 64
+            fi
+            HF_PATH="$2"
+            HF_PATH_SET=true
+            shift 2
+            ;;
+        --hf-path=*)
+            HF_PATH="${1#*=}"
+            HF_PATH_SET=true
+            shift
+            ;;
         --)
             shift
             FORWARDED_ARGS+=("$@")
@@ -44,13 +79,46 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [[ "$HF_REPO_SET" == true && -z "$HF_REPO" ]]; then
+    echo "--hf-repo requires a non-empty OWNER/REPO value." >&2
+    exit 64
+fi
+if [[ "$HF_PATH_SET" == true && -z "$HF_PATH" ]]; then
+    echo "--hf-path requires a non-empty repository path." >&2
+    exit 64
+fi
+if [[ "$HF_PATH_SET" == true && "$HF_REPO_SET" != true ]]; then
+    echo "--hf-path requires --hf-repo." >&2
+    exit 64
+fi
+
 OUTPUT_NAME_EXPLICIT=false
+RAW_HF_OPTION=""
 for argument in "${FORWARDED_ARGS[@]}"; do
     if [[ "$argument" == "--output_name" || "$argument" == --output_name=* ]]; then
         OUTPUT_NAME_EXPLICIT=true
-        break
+    fi
+    if [[ "$argument" == "--huggingface_repo_id" || \
+          "$argument" == --huggingface_repo_id=* || \
+          "$argument" == "--huggingface_repo_type" || \
+          "$argument" == --huggingface_repo_type=* || \
+          "$argument" == "--huggingface_path_in_repo" || \
+          "$argument" == --huggingface_path_in_repo=* || \
+          "$argument" == "--huggingface_token" || \
+          "$argument" == --huggingface_token=* || \
+          "$argument" == "--huggingface_repo_visibility" || \
+          "$argument" == --huggingface_repo_visibility=* || \
+          "$argument" == "--save_state_to_huggingface" || \
+          "$argument" == "--async_upload" ]]; then
+        RAW_HF_OPTION="${argument%%=*}"
     fi
 done
+
+if [[ -n "$HF_REPO" && -n "$RAW_HF_OPTION" ]]; then
+    echo "--hf-repo cannot be combined with upstream Hugging Face option: $RAW_HF_OPTION" >&2
+    echo "Use the convenience options or the raw upstream options, not both." >&2
+    exit 64
+fi
 
 case "$PRESET" in
     default)
@@ -86,6 +154,10 @@ require_effective_file() {
 
 require_effective_file "$TRAIN_SCRIPT" "Krea2 training script" "Use a Musubi Tuner image with Krea2 support (v0.3.4 or newer)."
 require_effective_file "$TRIGGER_WORDS_SCRIPT" "trigger-word helper" "Use an image containing the bundled trigger-word helper."
+if [[ -n "$HF_REPO" ]]; then
+    require_effective_file "$HF_UPLOAD_SCRIPT" "Hugging Face checkpoint upload helper" \
+        "Use an image containing the bundled Krea2 Hugging Face helper."
+fi
 
 if ! command -v python >/dev/null 2>&1 || ! command -v accelerate >/dev/null 2>&1; then
     echo "Python or Accelerate is not available on PATH; the image virtual environment is not active." >&2
@@ -289,6 +361,13 @@ for value in (
     final_checkpoint,
     unique_candidate_states,
     effective_batch,
+    getattr(args, "huggingface_repo_id", None),
+    getattr(args, "huggingface_repo_type", None),
+    getattr(args, "huggingface_path_in_repo", None),
+    "true" if getattr(args, "huggingface_token", None) else "false",
+    getattr(args, "huggingface_repo_visibility", None),
+    "true" if getattr(args, "save_state_to_huggingface", False) else "false",
+    "true" if getattr(args, "async_upload", False) else "false",
 ):
     print(format_number(value))
 PY
@@ -297,7 +376,7 @@ mapfile -t effective_paths <"$effective_paths_file"
 rm -f -- "$effective_paths_file"
 trap - EXIT
 
-if [[ ${#effective_paths[@]} -ne 29 ]]; then
+if [[ ${#effective_paths[@]} -ne 36 ]]; then
     echo "Unable to resolve the effective Krea2 training configuration." >&2
     exit 2
 fi
@@ -331,6 +410,26 @@ PERIODIC_CANDIDATES="${effective_paths[25]}"
 FINAL_CHECKPOINT="${effective_paths[26]}"
 UNIQUE_CANDIDATE_STATES="${effective_paths[27]}"
 EFFECTIVE_BATCH="${effective_paths[28]}"
+CONFIG_HF_REPO="${effective_paths[29]}"
+CONFIG_HF_REPO_TYPE="${effective_paths[30]}"
+CONFIG_HF_PATH="${effective_paths[31]}"
+CONFIG_HF_TOKEN_SET="${effective_paths[32]}"
+CONFIG_HF_VISIBILITY="${effective_paths[33]}"
+CONFIG_HF_STATE_UPLOAD="${effective_paths[34]}"
+CONFIG_HF_ASYNC_UPLOAD="${effective_paths[35]}"
+
+if [[ -n "$HF_REPO" ]] && \
+    { [[ -n "$CONFIG_HF_REPO" ]] || \
+      [[ -n "$CONFIG_HF_REPO_TYPE" ]] || \
+      [[ -n "$CONFIG_HF_PATH" ]] || \
+      [[ "$CONFIG_HF_TOKEN_SET" == true ]] || \
+      [[ -n "$CONFIG_HF_VISIBILITY" ]] || \
+      [[ "$CONFIG_HF_STATE_UPLOAD" == true ]] || \
+      [[ "$CONFIG_HF_ASYNC_UPLOAD" == true ]]; }; then
+    echo "--hf-repo cannot be combined with Hugging Face options in the effective training config." >&2
+    echo "Use the convenience options or the raw upstream options, not both." >&2
+    exit 64
+fi
 
 require_effective_file "$DATASET_CONFIG" "--dataset_config" "Run init-krea2-character.sh or provide an existing dataset config."
 require_effective_file "$DIT" "--dit" "Run download-krea2.sh or override --dit with an existing Krea-2-Raw checkpoint."
@@ -342,6 +441,43 @@ if [[ -n "$SAMPLE_PROMPTS" ]]; then
     if [[ -n "$TURBO_DIT" ]]; then
         require_effective_file "$TURBO_DIT" "--turbo_dit" "Run download-krea2.sh or override --turbo_dit with an existing Krea-2-Turbo checkpoint."
     fi
+fi
+
+AUTO_OUTPUT_NAME_ARGS=()
+EFFECTIVE_OUTPUT_NAME="$OUTPUT_NAME"
+if [[ "$OUTPUT_NAME_EXPLICIT" != true ]]; then
+    require_effective_file "$TRIGGER_FILE" "Krea2 trigger metadata" \
+        "Run init-krea2-character.sh --trigger k2v9 or pass --output_name explicitly."
+    if [[ -z "$OUTPUT_NAME" ]]; then
+        echo "No --output_name is configured after applying command-line overrides." >&2
+        exit 2
+    fi
+
+    if ! GENERATED_OUTPUT_NAME="$(
+        python "$TRIGGER_WORDS_SCRIPT" output-name \
+            --samples "$TRIGGER_FILE" \
+            --base-name "$OUTPUT_NAME" \
+            --insert-after-prefix krea2
+    )"; then
+        echo "Run init-krea2-character.sh --trigger k2v9 or pass --output_name explicitly." >&2
+        exit 2
+    fi
+    EFFECTIVE_OUTPUT_NAME="$GENERATED_OUTPUT_NAME"
+    AUTO_OUTPUT_NAME_ARGS=(--output_name "$GENERATED_OUTPUT_NAME")
+fi
+
+HF_UPLOAD_ARGS=()
+HF_STARTED_AT=""
+if [[ -n "$HF_REPO" ]]; then
+    HF_STARTED_AT="$(date -u +%Y%m%dT%H%M%SZ)"
+    if [[ -z "$HF_PATH" ]]; then
+        HF_PATH="krea2/$EFFECTIVE_OUTPUT_NAME/$HF_STARTED_AT"
+    fi
+    HF_UPLOAD_ARGS=(
+        --huggingface_repo_id "$HF_REPO"
+        --huggingface_repo_type model
+        --huggingface_path_in_repo "$HF_PATH"
+    )
 fi
 
 print_plan_field() {
@@ -386,6 +522,12 @@ if [[ -n "$STATE_WINDOW" ]]; then
 else
     print_plan_field "Resumable-state window:" "not configured"
 fi
+if [[ -n "$HF_REPO" ]]; then
+    echo
+    print_plan_field "Hugging Face repository:" "$HF_REPO"
+    print_plan_field "Hugging Face path:" "$HF_PATH"
+    print_plan_field "Hugging Face artifacts:" "LoRA checkpoints only (synchronous)"
+fi
 
 if [[ "$ESTIMATE_AUTHORITATIVE" == true ]] && \
     (( PRIMARY_IMAGE_COUNT < 20 || PRIMARY_IMAGE_COUNT > 40 )); then
@@ -398,26 +540,15 @@ echo
 echo "This maximum is a checkpoint-search horizon. The final checkpoint"
 echo "is not expected to be the best checkpoint."
 
-AUTO_OUTPUT_NAME_ARGS=()
-if [[ "$OUTPUT_NAME_EXPLICIT" != true ]]; then
-    require_effective_file "$TRIGGER_FILE" "Krea2 trigger metadata" \
-        "Run init-krea2-character.sh --trigger k2v9 or pass --output_name explicitly."
-    if [[ -z "$OUTPUT_NAME" ]]; then
-        echo "No --output_name is configured after applying command-line overrides." >&2
-        exit 2
-    fi
+echo "LoRA output name: $EFFECTIVE_OUTPUT_NAME"
 
-    if ! GENERATED_OUTPUT_NAME="$(
-        python "$TRIGGER_WORDS_SCRIPT" output-name \
-            --samples "$TRIGGER_FILE" \
-            --base-name "$OUTPUT_NAME" \
-            --insert-after-prefix krea2
-    )"; then
-        echo "Run init-krea2-character.sh --trigger k2v9 or pass --output_name explicitly." >&2
-        exit 2
-    fi
-    AUTO_OUTPUT_NAME_ARGS=(--output_name "$GENERATED_OUTPUT_NAME")
-    echo "LoRA output name: $GENERATED_OUTPUT_NAME"
+if [[ -n "$HF_REPO" ]]; then
+    python "$HF_UPLOAD_SCRIPT" \
+        --repo "$HF_REPO" \
+        --path "$HF_PATH" \
+        --preset "$PRESET" \
+        --output-name "$EFFECTIVE_OUTPUT_NAME" \
+        --started-at "$HF_STARTED_AT"
 fi
 
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
@@ -434,4 +565,5 @@ exec accelerate launch \
     "$TRAIN_SCRIPT" \
     --config_file "$TRAIN_CONFIG" \
     "${FORWARDED_ARGS[@]}" \
-    "${AUTO_OUTPUT_NAME_ARGS[@]}"
+    "${AUTO_OUTPUT_NAME_ARGS[@]}" \
+    "${HF_UPLOAD_ARGS[@]}"

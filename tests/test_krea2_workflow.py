@@ -24,6 +24,9 @@ SCRIPTS_DIR = Path(
     os.environ.get("KREA2_SCRIPTS_DIR", REPOSITORY_ROOT / "src" / "scripts")
 )
 TEMPLATES_DIR = SCRIPTS_DIR / "krea2" / "templates"
+HF_UPLOAD_HELPER = (
+    SCRIPTS_DIR / "krea2" / "huggingface_checkpoint_upload.py"
+)
 
 
 def load_trigger_words_module():
@@ -50,6 +53,161 @@ class FakeTomlModule(types.ModuleType):
     def load(self, path: str):
         with Path(path).open("rb") as handle:
             return tomllib.load(handle)
+
+
+class HuggingFaceCheckpointUploadTests(unittest.TestCase):
+    def load_helper(self):
+        fake_hub = types.ModuleType("huggingface_hub")
+        fake_utils = types.ModuleType("huggingface_hub.utils")
+
+        class HFValidationError(ValueError):
+            pass
+
+        def validate_repo_id(repo_id: str) -> None:
+            if not repo_id or repo_id.startswith("/") or repo_id.endswith("/"):
+                raise HFValidationError("invalid repository id")
+
+        class FakeHfApi:
+            instances: list["FakeHfApi"] = []
+            repo_error = False
+            upload_error = False
+
+            def __init__(self, *, token: str):
+                self.token = token
+                self.repo_calls: list[dict[str, object]] = []
+                self.upload_calls: list[dict[str, object]] = []
+                self.__class__.instances.append(self)
+
+            def repo_info(self, **kwargs):
+                self.repo_calls.append(kwargs)
+                if self.__class__.repo_error:
+                    raise RuntimeError(f"repository failure containing {self.token}")
+                return object()
+
+            def upload_file(self, **kwargs):
+                self.upload_calls.append(kwargs)
+                if self.__class__.upload_error:
+                    raise RuntimeError(f"upload failure containing {self.token}")
+                return object()
+
+        fake_hub.HfApi = FakeHfApi
+        fake_utils.HFValidationError = HFValidationError
+        fake_utils.validate_repo_id = validate_repo_id
+
+        spec = importlib.util.spec_from_file_location(
+            "huggingface_checkpoint_upload_under_test", HF_UPLOAD_HELPER
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Unable to load Hugging Face checkpoint upload helper")
+        module = importlib.util.module_from_spec(spec)
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "huggingface_hub": fake_hub,
+                "huggingface_hub.utils": fake_utils,
+            },
+        ):
+            spec.loader.exec_module(module)
+        return module, FakeHfApi
+
+    def test_preflight_writes_only_a_token_free_run_manifest(self):
+        helper, fake_api = self.load_helper()
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        secret = "hf_test_do_not_print"
+        with (
+            mock.patch.dict(os.environ, {"HF_TOKEN": secret}),
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
+            returncode = helper.main(
+                [
+                    "--repo",
+                    "owner/checkpoints",
+                    "--path",
+                    "krea2/krea2-k2v9-character-lora/run",
+                    "--preset",
+                    "default",
+                    "--output-name",
+                    "krea2-k2v9-character-lora",
+                    "--started-at",
+                    "20260724T120000Z",
+                ]
+            )
+
+        self.assertEqual(0, returncode, stderr.getvalue())
+        instance = fake_api.instances[-1]
+        self.assertEqual(secret, instance.token)
+        self.assertEqual(
+            [{"repo_id": "owner/checkpoints", "repo_type": "model"}],
+            instance.repo_calls,
+        )
+        self.assertEqual(1, len(instance.upload_calls))
+        upload = instance.upload_calls[0]
+        self.assertEqual(
+            "krea2/krea2-k2v9-character-lora/run/run.json",
+            upload["path_in_repo"],
+        )
+        manifest = json.loads(upload["path_or_fileobj"].decode("utf-8"))
+        self.assertEqual(
+            {
+                "artifacts": ["lora-checkpoints"],
+                "output_name": "krea2-k2v9-character-lora",
+                "preset": "default",
+                "schema_version": 1,
+                "started_at": "20260724T120000Z",
+                "workflow": "krea2-character",
+            },
+            {key: value for key, value in manifest.items() if key != "created_at"},
+        )
+        rendered = stdout.getvalue() + stderr.getvalue() + json.dumps(manifest)
+        self.assertNotIn(secret, rendered)
+
+    def test_preflight_requires_hf_token_without_exposing_it_on_errors(self):
+        helper, fake_api = self.load_helper()
+        args = [
+            "--repo",
+            "owner/checkpoints",
+            "--path",
+            "krea2/run",
+            "--preset",
+            "quality",
+            "--output-name",
+            "output",
+            "--started-at",
+            "20260724T120000Z",
+        ]
+
+        stderr = io.StringIO()
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            contextlib.redirect_stderr(stderr),
+        ):
+            self.assertEqual(2, helper.main(args))
+        self.assertIn("HF_TOKEN is required", stderr.getvalue())
+        self.assertEqual([], fake_api.instances)
+
+        secret = "hf_secret_from_exception"
+        fake_api.repo_error = True
+        stderr = io.StringIO()
+        with (
+            mock.patch.dict(os.environ, {"HF_TOKEN": secret}),
+            contextlib.redirect_stderr(stderr),
+        ):
+            self.assertEqual(2, helper.main(args))
+        self.assertIn("Unable to access Hugging Face model repository", stderr.getvalue())
+        self.assertNotIn(secret, stderr.getvalue())
+
+        fake_api.repo_error = False
+        fake_api.upload_error = True
+        stderr = io.StringIO()
+        with (
+            mock.patch.dict(os.environ, {"HF_TOKEN": secret}),
+            contextlib.redirect_stderr(stderr),
+        ):
+            self.assertEqual(2, helper.main(args))
+        self.assertIn("Ensure HF_TOKEN has write access", stderr.getvalue())
+        self.assertNotIn(secret, stderr.getvalue())
 
 
 class Krea2TemplateTests(unittest.TestCase):
@@ -396,8 +554,14 @@ class LauncherIntegrationTests(unittest.TestCase):
         package = source_root / "musubi_tuner"
         training_package = package / "training"
         dataset_package = package / "dataset"
+        huggingface_package = source_root / "huggingface_hub"
         fake_bin = root / "bin"
-        for directory in (training_package, dataset_package, fake_bin):
+        for directory in (
+            training_package,
+            dataset_package,
+            huggingface_package,
+            fake_bin,
+        ):
             directory.mkdir(parents=True, exist_ok=True)
 
         for path in (
@@ -435,6 +599,54 @@ class LauncherIntegrationTests(unittest.TestCase):
             ).lstrip(),
             encoding="utf-8",
         )
+        (huggingface_package / "__init__.py").write_text(
+            textwrap.dedent(
+                """
+                import json
+                import os
+
+                class HfApi:
+                    def __init__(self, *, token):
+                        self.token = token
+
+                    def repo_info(self, **kwargs):
+                        if os.environ.get("HF_TEST_REPO_ERROR"):
+                            raise RuntimeError(f"repository failure containing {self.token}")
+                        return object()
+
+                    def upload_file(self, **kwargs):
+                        if os.environ.get("HF_TEST_UPLOAD_ERROR"):
+                            raise RuntimeError(f"upload failure containing {self.token}")
+                        log_path = os.environ.get("HF_TEST_LOG")
+                        if log_path:
+                            record = {
+                                "repo_id": kwargs["repo_id"],
+                                "repo_type": kwargs["repo_type"],
+                                "path_in_repo": kwargs["path_in_repo"],
+                                "manifest": json.loads(
+                                    kwargs["path_or_fileobj"].decode("utf-8")
+                                ),
+                            }
+                            with open(log_path, "a", encoding="utf-8") as handle:
+                                handle.write(json.dumps(record) + "\\n")
+                        return object()
+                """
+            ).lstrip(),
+            encoding="utf-8",
+        )
+        (huggingface_package / "utils.py").write_text(
+            textwrap.dedent(
+                """
+                class HFValidationError(ValueError):
+                    pass
+
+                def validate_repo_id(repo_id):
+                    if not repo_id or repo_id.startswith("/") or repo_id.endswith("/"):
+                        raise HFValidationError("invalid repository id")
+                """
+            ).lstrip(),
+            encoding="utf-8",
+        )
         (training_package / "parser_common.py").write_text(
             textwrap.dedent(
                 """
@@ -454,6 +666,11 @@ class LauncherIntegrationTests(unittest.TestCase):
                         "output_dir",
                         "logging_dir",
                         "output_name",
+                        "huggingface_repo_id",
+                        "huggingface_repo_type",
+                        "huggingface_path_in_repo",
+                        "huggingface_token",
+                        "huggingface_repo_visibility",
                     ):
                         parser.add_argument(f"--{name}")
                     for name in (
@@ -469,6 +686,10 @@ class LauncherIntegrationTests(unittest.TestCase):
                     parser.add_argument("--learning_rate", type=float)
                     parser.add_argument("--network_args", nargs="+")
                     parser.add_argument("--resume")
+                    parser.add_argument(
+                        "--save_state_to_huggingface", action="store_true"
+                    )
+                    parser.add_argument("--async_upload", action="store_true")
                     return parser
 
                 def read_config_from_file(args, parser):
@@ -703,6 +924,234 @@ class LauncherIntegrationTests(unittest.TestCase):
                         output, r"Unique candidate states:\s+20"
                     )
                     self.assertIn("FAKE_ACCELERATE launch", output)
+
+            hf_log = runtime / "hf-preflight.jsonl"
+            hf_environment = environment.copy()
+            hf_environment.update(
+                {
+                    "HF_TOKEN": "hf_launcher_secret",
+                    "HF_TEST_LOG": hf_log.as_posix(),
+                }
+            )
+            for preset in ("default", "baseline", "quality", "10gb"):
+                with self.subTest(selector="hf-upload", preset=preset):
+                    hf_path = f"krea2/custom/{preset}"
+                    uploaded = self.run_bash(
+                        train_script,
+                        [
+                            "--preset",
+                            preset,
+                            "--hf-repo",
+                            "owner/checkpoints",
+                            "--hf-path",
+                            hf_path,
+                        ],
+                        environment=hf_environment,
+                        fake_bin=fake_bin,
+                    )
+                    upload_output = uploaded.stdout + uploaded.stderr
+                    self.assertEqual(0, uploaded.returncode, upload_output)
+                    self.assertRegex(
+                        upload_output,
+                        r"Hugging Face repository:\s+owner/checkpoints",
+                    )
+                    self.assertRegex(
+                        upload_output,
+                        rf"Hugging Face path:\s+{re.escape(hf_path)}",
+                    )
+                    self.assertRegex(
+                        upload_output,
+                        r"Hugging Face artifacts:\s+LoRA checkpoints only \(synchronous\)",
+                    )
+                    self.assertIn(
+                        "--huggingface_repo_id owner/checkpoints",
+                        upload_output,
+                    )
+                    self.assertIn(
+                        f"--huggingface_path_in_repo {hf_path}",
+                        upload_output,
+                    )
+                    self.assertIn("--huggingface_repo_type model", upload_output)
+                    self.assertNotIn("--save_state_to_huggingface", upload_output)
+                    self.assertNotIn("--async_upload", upload_output)
+                    self.assertNotIn("hf_launcher_secret", upload_output)
+
+            preflights = [
+                json.loads(line)
+                for line in hf_log.read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(4, len(preflights))
+            self.assertEqual(
+                {"default", "baseline", "quality", "10gb"},
+                {record["manifest"]["preset"] for record in preflights},
+            )
+            for record in preflights:
+                self.assertEqual("owner/checkpoints", record["repo_id"])
+                self.assertEqual("model", record["repo_type"])
+                self.assertTrue(record["path_in_repo"].endswith("/run.json"))
+                self.assertEqual(
+                    ["lora-checkpoints"], record["manifest"]["artifacts"]
+                )
+                self.assertNotIn(
+                    "hf_launcher_secret", json.dumps(record, sort_keys=True)
+                )
+
+            automatic_path = self.run_bash(
+                train_script,
+                ["--hf-repo=owner/checkpoints"],
+                environment=hf_environment,
+                fake_bin=fake_bin,
+            )
+            automatic_output = automatic_path.stdout + automatic_path.stderr
+            self.assertEqual(0, automatic_path.returncode, automatic_output)
+            automatic_match = re.search(
+                r"Hugging Face path:\s+"
+                r"(krea2/krea2-k2v9-character-lora/\d{8}T\d{6}Z)",
+                automatic_output,
+            )
+            self.assertIsNotNone(automatic_match, automatic_output)
+            self.assertIn(
+                f"--huggingface_path_in_repo {automatic_match.group(1)}",
+                automatic_output,
+            )
+
+            without_token = environment.copy()
+            without_token.pop("HF_TOKEN", None)
+            missing_token = self.run_bash(
+                train_script,
+                ["--hf-repo", "owner/checkpoints"],
+                environment=without_token,
+                fake_bin=fake_bin,
+            )
+            missing_token_output = missing_token.stdout + missing_token.stderr
+            self.assertEqual(2, missing_token.returncode, missing_token_output)
+            self.assertIn("HF_TOKEN is required", missing_token_output)
+            self.assertNotIn("FAKE_ACCELERATE", missing_token_output)
+
+            inaccessible_environment = hf_environment.copy()
+            inaccessible_environment["HF_TEST_REPO_ERROR"] = "1"
+            inaccessible = self.run_bash(
+                train_script,
+                ["--hf-repo", "owner/checkpoints"],
+                environment=inaccessible_environment,
+                fake_bin=fake_bin,
+            )
+            inaccessible_output = inaccessible.stdout + inaccessible.stderr
+            self.assertEqual(2, inaccessible.returncode, inaccessible_output)
+            self.assertIn(
+                "Unable to access Hugging Face model repository",
+                inaccessible_output,
+            )
+            self.assertNotIn("hf_launcher_secret", inaccessible_output)
+            self.assertNotIn("FAKE_ACCELERATE", inaccessible_output)
+
+            unwritable_environment = hf_environment.copy()
+            unwritable_environment["HF_TEST_UPLOAD_ERROR"] = "1"
+            unwritable = self.run_bash(
+                train_script,
+                ["--hf-repo", "owner/checkpoints"],
+                environment=unwritable_environment,
+                fake_bin=fake_bin,
+            )
+            unwritable_output = unwritable.stdout + unwritable.stderr
+            self.assertEqual(2, unwritable.returncode, unwritable_output)
+            self.assertIn("Ensure HF_TOKEN has write access", unwritable_output)
+            self.assertNotIn("hf_launcher_secret", unwritable_output)
+            self.assertNotIn("FAKE_ACCELERATE", unwritable_output)
+
+            for raw_option in (
+                ["--huggingface_repo_id", "other/repository"],
+                ["--huggingface_path_in_repo", "other/path"],
+                ["--huggingface_repo_type", "model"],
+                ["--huggingface_token", "hf_raw_secret"],
+                ["--huggingface_token=hf_raw_equals_secret"],
+                ["--huggingface_repo_visibility", "private"],
+                ["--save_state_to_huggingface"],
+                ["--async_upload"],
+            ):
+                with self.subTest(conflicting_option=raw_option[0]):
+                    conflicted = self.run_bash(
+                        train_script,
+                        ["--hf-repo", "owner/checkpoints", *raw_option],
+                        environment=hf_environment,
+                        fake_bin=fake_bin,
+                    )
+                    conflict_output = conflicted.stdout + conflicted.stderr
+                    self.assertEqual(64, conflicted.returncode, conflict_output)
+                    self.assertIn(
+                        "--hf-repo cannot be combined with upstream Hugging Face option",
+                        conflict_output,
+                    )
+                    if raw_option[0].startswith("--huggingface_token"):
+                        self.assertNotIn("hf_raw_secret", conflict_output)
+                        self.assertNotIn("hf_raw_equals_secret", conflict_output)
+
+            configured_hf = runtime / "train-configured-hf.toml"
+            configured_hf.write_text(
+                (workflow / "train.toml").read_text(encoding="utf-8")
+                + '\nhuggingface_repo_id = "owner/configured"\n',
+                encoding="utf-8",
+            )
+            configured_conflict = self.run_bash(
+                train_script,
+                [
+                    "--hf-repo",
+                    "owner/checkpoints",
+                    "--config_file",
+                    configured_hf.as_posix(),
+                ],
+                environment=hf_environment,
+                fake_bin=fake_bin,
+            )
+            configured_conflict_output = (
+                configured_conflict.stdout + configured_conflict.stderr
+            )
+            self.assertEqual(
+                64, configured_conflict.returncode, configured_conflict_output
+            )
+            self.assertIn(
+                "Hugging Face options in the effective training config",
+                configured_conflict_output,
+            )
+            self.assertNotIn("FAKE_ACCELERATE", configured_conflict_output)
+
+            raw_upstream = self.run_bash(
+                train_script,
+                [
+                    "--huggingface_repo_id",
+                    "owner/raw",
+                    "--huggingface_repo_type",
+                    "model",
+                    "--huggingface_path_in_repo",
+                    "raw/path",
+                ],
+                environment=environment,
+                fake_bin=fake_bin,
+            )
+            raw_output = raw_upstream.stdout + raw_upstream.stderr
+            self.assertEqual(0, raw_upstream.returncode, raw_output)
+            self.assertIn("--huggingface_repo_id owner/raw", raw_output)
+            self.assertIn("--huggingface_path_in_repo raw/path", raw_output)
+
+            orphan_path = self.run_bash(
+                train_script,
+                ["--hf-path", "krea2/orphan"],
+                environment=environment,
+                fake_bin=fake_bin,
+            )
+            self.assertEqual(64, orphan_path.returncode)
+            self.assertIn("--hf-path requires --hf-repo", orphan_path.stderr)
+
+            for empty_option in ("--hf-repo=", "--hf-path="):
+                with self.subTest(empty_option=empty_option):
+                    empty = self.run_bash(
+                        train_script,
+                        [empty_option],
+                        environment=environment,
+                        fake_bin=fake_bin,
+                    )
+                    self.assertEqual(64, empty.returncode)
+                    self.assertIn("requires a non-empty", empty.stderr)
 
             rejected_train = self.run_bash(
                 train_script,
