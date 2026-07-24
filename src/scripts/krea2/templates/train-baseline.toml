@@ -1,5 +1,5 @@
-# Longer attention-only Krea2 character LoRA for a GPU with 32 GB VRAM.
-# The narrower target set supports a longer comparison run at native 1024px.
+# Compact all-linear Krea2 character-LoRA baseline for a GPU with 32 GB VRAM.
+# Train on Krea-2-Raw and generate fixed validation previews with Krea-2-Turbo.
 
 # Models and data
 dit = "__MUSUBI_HOME__/models/krea2/raw.safetensors"
@@ -19,27 +19,25 @@ sdpa = true
 timestep_sampling = "krea2_shift"
 weighting_scheme = "none"
 
-# LoRA network: attention projections only
+# LoRA network: all supported Krea2 Linear layers
 network_module = "networks.lora_krea2"
-network_dim = 64
-network_alpha = 64
-network_args = ["exclude_patterns=['.*\\.mlp\\..*','first','last\\.linear','tmlp\\..*','txtmlp\\..*','tproj\\.1','txtfusion\\..*']"]
+network_dim = 32
+network_alpha = 32
 
 # Optimizer
 optimizer_type = "adamw8bit"
 optimizer_args = ["weight_decay=0.0001"]
-learning_rate = 0.00005
+learning_rate = 0.0001
 lr_scheduler = "constant"
 lr_warmup_steps = 0
 max_grad_norm = 1.0
 
-# Training duration
-max_train_steps = 3600
+# Extended checkpoint-search horizon
+max_train_steps = 4000
 gradient_accumulation_steps = 1
 
 # Checkpoints and resumable state
 save_every_n_steps = 200
-save_last_n_steps = 3800
 save_state = true
 save_state_on_train_end = true
 save_last_n_steps_state = 400
@@ -55,12 +53,12 @@ persistent_data_loader_workers = true
 seed = 42
 
 # Output and logging
-output_dir = "__MUSUBI_HOME__/output/krea2-character/attention"
-output_name = "krea2-character-lora-attention"
-logging_dir = "__MUSUBI_HOME__/output/krea2-character/attention/logs"
+output_dir = "__MUSUBI_HOME__/output/krea2-character/baseline"
+output_name = "krea2-character-lora-baseline"
+logging_dir = "__MUSUBI_HOME__/output/krea2-character/baseline/logs"
 log_with = "tensorboard"
 log_config = true
 
-metadata_title = "Krea2 character likeness LoRA attention preset"
-metadata_description = "Longer rank-64 character likeness LoRA trained on Krea2 attention projections."
-metadata_tags = "krea2,character,likeness,lora,attention,32gb"
+metadata_title = "Krea2 character likeness LoRA baseline preset"
+metadata_description = "Compact rank-32 character likeness LoRA trained on all Krea2 Linear layers."
+metadata_tags = "krea2,character,likeness,lora,baseline,32gb"

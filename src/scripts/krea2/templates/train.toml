@@ -1,5 +1,5 @@
-# Krea2 character-LoRA baseline for a GPU with 32 GB VRAM.
-# Train on Krea-2-Raw and generate fixed validation previews with Krea-2-Turbo.
+# Default attention-only Krea2 character LoRA for a GPU with 32 GB VRAM.
+# The narrower target set supports an extended search while preserving prompt control.
 
 # Models and data
 dit = "__MUSUBI_HOME__/models/krea2/raw.safetensors"
@@ -19,33 +19,33 @@ sdpa = true
 timestep_sampling = "krea2_shift"
 weighting_scheme = "none"
 
-# LoRA network: all supported Krea2 Linear layers
+# LoRA network: attention projections only
 network_module = "networks.lora_krea2"
-network_dim = 32
-network_alpha = 32
+network_dim = 64
+network_alpha = 64
+network_args = ["exclude_patterns=['.*\\.mlp\\..*','first','last\\.linear','tmlp\\..*','txtmlp\\..*','tproj\\.1','txtfusion\\..*']"]
 
 # Optimizer
 optimizer_type = "adamw8bit"
 optimizer_args = ["weight_decay=0.0001"]
-learning_rate = 0.0001
+learning_rate = 0.00005
 lr_scheduler = "constant"
 lr_warmup_steps = 0
 max_grad_norm = 1.0
 
-# Training duration
-max_train_steps = 1800
+# Extended checkpoint-search horizon
+max_train_steps = 8000
 gradient_accumulation_steps = 1
 
 # Checkpoints and resumable state
-save_every_n_steps = 200
-save_last_n_steps = 2000
+save_every_n_steps = 400
 save_state = true
 save_state_on_train_end = true
-save_last_n_steps_state = 400
+save_last_n_steps_state = 800
 
 # Fixed Turbo previews. Turbo sampling cannot be combined with blocks_to_swap.
 sample_prompts = "__MUSUBI_HOME__/dataset/krea2/samples.txt"
-sample_every_n_steps = 200
+sample_every_n_steps = 400
 sample_at_first = true
 
 # Data loading and reproducibility
@@ -61,5 +61,5 @@ log_with = "tensorboard"
 log_config = true
 
 metadata_title = "Krea2 character likeness LoRA"
-metadata_description = "Character likeness LoRA trained on Krea-2-Raw for Krea-2-Turbo inference."
-metadata_tags = "krea2,character,likeness,lora"
+metadata_description = "Balanced rank-64 character likeness LoRA trained on Krea2 attention projections."
+metadata_tags = "krea2,character,likeness,lora,attention,32gb"

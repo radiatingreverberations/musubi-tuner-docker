@@ -15,7 +15,7 @@ LATENT_SCRIPT="$MUSUBI_HOME/src/musubi_tuner/krea2_cache_latents.py"
 TEXT_ENCODER_SCRIPT="$MUSUBI_HOME/src/musubi_tuner/krea2_cache_text_encoder_outputs.py"
 
 print_usage() {
-    printf 'Usage: %s [--preset default|quality|attention|10gb] [--trigger unique-token] [--skip-trigger-check]\n' "$(basename "$0")"
+    printf 'Usage: %s [--preset default|baseline|quality|10gb] [--trigger unique-token] [--skip-trigger-check]\n' "$(basename "$0")"
 }
 
 PRESET="default"
@@ -76,7 +76,7 @@ fi
 
 TEXT_ENCODER_DEVICE_ARGS=()
 case "$PRESET" in
-    default|quality|attention)
+    default|baseline|quality)
         DATASET_CONFIG="$WORKFLOW_DIR/dataset.toml"
         ;;
     10gb)

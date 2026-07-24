@@ -17,6 +17,8 @@ bundled TOML presets remain the source of truth for exact Musubi settings.
 - Reuse the same prompts and seeds at every checkpoint.
 - Choose the earliest checkpoint with reliable identity and good prompt
   control, not automatically the final checkpoint.
+- Treat the configured maximum as a search horizon, not a prediction of the
+  optimal stopping point.
 
 ## Curate for identity and control
 
@@ -118,11 +120,19 @@ accounting for those differences.
 
 For this repository:
 
-- `default` is the rank-32, 1,800-step reference run, with post-1,200
-  checkpoints available for comparison.
-- `quality` increases all-linear capacity and runs for 2,700 steps.
-- `attention` narrows the targets and runs longer for 3,600 steps.
+- `default` is the balanced rank-64 attention-only run with an 8,000-step
+  horizon and 400-step checkpoints.
+- `baseline` is the compact rank-32 all-linear reference with a 4,000-step
+  horizon and 200-step checkpoints.
+- `quality` is the rank-64 all-linear capacity comparison with a 6,000-step
+  horizon and 300-step checkpoints.
 - `10gb` is the block-swapped 640-pixel low-VRAM run.
+
+Each 32 GB horizon retains 20 step-numbered candidates. The horizons are
+deliberately generous so a completed run can reveal a rise, plateau, and
+decline; they are not claims about a universal Krea2 optimum. The similar
+checkpoint-interval-times-learning-rate values are useful spacing symmetry,
+not evidence for the horizon choices.
 
 Change one major variable at a time. Reusing the same dataset, captions,
 preview prompts, and seeds makes comparisons meaningful.
@@ -178,8 +188,15 @@ Use this checklist rather than selecting the last file:
 
 Later checkpoints often strengthen likeness while also increasing dataset
 leakage. Prefer the earliest checkpoint that is reliably recognizable and still
-easy to direct. The bundled 200-step save and preview cadence is designed for
-this comparison.
+easy to direct. Ideally, the selected checkpoint should have at least four
+later periodic candidates that fail to improve the overall identity/control
+trade-off. A winner among the final four candidates means the run did not
+clearly establish the far side of the optimum.
+
+Musubi also writes an unsuffixed final model. For each bundled 32 GB preset, it
+duplicates the twentieth periodic state because the horizon is divisible by
+the checkpoint interval; compare unique training steps rather than counting
+files.
 
 ## Respond to common failure modes
 
@@ -188,7 +205,7 @@ this comparison.
 | Weak identity everywhere | Check curation and trigger consistency before increasing steps |
 | Strong only on close portraits | Add or improve a few half/full-body images with a salient subject |
 | Same clothing or background keeps appearing | Caption those attributes explicitly; consider regularization |
-| Prompt changes stop working | Try an earlier checkpoint or the attention-only preset |
+| Prompt changes stop working | Try an earlier checkpoint or the attention-only default preset |
 | Generic prompts change without the trigger | Use an earlier checkpoint or reduce LoRA strength at inference |
 | Artifacts increase while likeness improves | Stop earlier; more steps are not the remedy |
 
@@ -224,6 +241,7 @@ publicity, biometric-data, and platform-policy obligations.
 - [ ] Caches rebuilt after the last image or caption change
 - [ ] Fixed preview seeds retained
 - [ ] Enough disk space for frequent checkpoints and saved state
+- [ ] Output checkpoints are on persistent storage or copied off the ephemeral VM
 - [ ] Consent and intended use are clear for real-person likenesses
 
 ## Further reading

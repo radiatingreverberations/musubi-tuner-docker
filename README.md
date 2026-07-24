@@ -44,8 +44,8 @@ For a remote cloud session, use the SSH image described in [SSH.md](SSH.md).
 ## Training workflows
 
 - [Krea2 character LoRA](docs/KREA2.md) provides a turnkey 32 GB VRAM
-  RAW-training and Turbo-preview workflow, higher-quality 32 GB comparison
-  presets, and experimental 10 GB presets.
+  RAW-training and Turbo-preview workflow, checkpoint-search comparison
+  presets, and an experimental 10 GB preset.
 - [WAN 2.2](docs/WAN2.2.md) covers the existing i2v and t2v download, cache,
   and two-phase training helpers.
 

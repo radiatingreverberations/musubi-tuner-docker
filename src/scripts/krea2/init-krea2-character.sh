@@ -57,8 +57,8 @@ mkdir -p \
     "$WORKFLOW_DIR/cache" \
     "$WORKFLOW_DIR/cache-10gb" \
     "$OUTPUT_DIR/logs" \
+    "$OUTPUT_DIR/baseline/logs" \
     "$OUTPUT_DIR/quality/logs" \
-    "$OUTPUT_DIR/attention/logs" \
     "$OUTPUT_DIR/10gb/logs"
 
 escaped_base_dir="${BASE_DIR//\\/\\\\}"
@@ -126,8 +126,8 @@ render_or_update_samples() {
 
 render_template "$TEMPLATE_DIR/dataset.toml" "$WORKFLOW_DIR/dataset.toml"
 render_template "$TEMPLATE_DIR/train.toml" "$WORKFLOW_DIR/train.toml"
+render_template "$TEMPLATE_DIR/train-baseline.toml" "$WORKFLOW_DIR/train-baseline.toml"
 render_template "$TEMPLATE_DIR/train-quality.toml" "$WORKFLOW_DIR/train-quality.toml"
-render_template "$TEMPLATE_DIR/train-attention.toml" "$WORKFLOW_DIR/train-attention.toml"
 render_template "$TEMPLATE_DIR/dataset-10gb.toml" "$WORKFLOW_DIR/dataset-10gb.toml"
 render_template "$TEMPLATE_DIR/train-10gb.toml" "$WORKFLOW_DIR/train-10gb.toml"
 render_or_update_samples "$TEMPLATE_DIR/samples.txt" "$WORKFLOW_DIR/samples.txt"
@@ -136,5 +136,5 @@ echo
 echo "Krea2 character workflow initialized in $WORKFLOW_DIR"
 echo "Add paired images and .txt captions to $WORKFLOW_DIR/images."
 echo "Set or update the identity trigger with: init-krea2-character.sh --trigger k2v9"
-echo "32 GB presets: --preset quality or --preset attention"
+echo "32 GB presets: default, --preset baseline, or --preset quality"
 echo "Low-VRAM preset: --preset 10gb"

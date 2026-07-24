@@ -1,5 +1,5 @@
 # Higher-capacity Krea2 character LoRA for a GPU with 32 GB VRAM.
-# This is the rank-64, all-Linear-layer counterpart to the default reference run.
+# This is the rank-64, all-Linear-layer capacity comparison.
 
 # Models and data
 dit = "__MUSUBI_HOME__/models/krea2/raw.safetensors"
@@ -32,20 +32,19 @@ lr_scheduler = "constant"
 lr_warmup_steps = 0
 max_grad_norm = 1.0
 
-# Training duration
-max_train_steps = 2700
+# Extended checkpoint-search horizon
+max_train_steps = 6000
 gradient_accumulation_steps = 1
 
 # Checkpoints and resumable state
-save_every_n_steps = 200
-save_last_n_steps = 2900
+save_every_n_steps = 300
 save_state = true
 save_state_on_train_end = true
-save_last_n_steps_state = 400
+save_last_n_steps_state = 600
 
 # Fixed Turbo previews. Turbo sampling cannot be combined with blocks_to_swap.
 sample_prompts = "__MUSUBI_HOME__/dataset/krea2/samples.txt"
-sample_every_n_steps = 200
+sample_every_n_steps = 300
 sample_at_first = true
 
 # Data loading and reproducibility

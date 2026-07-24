@@ -24,8 +24,8 @@ train-krea2-character.sh
 Alternative 32 GB training runs reuse the same prepared cache:
 
 ```shell
+train-krea2-character.sh --preset baseline
 train-krea2-character.sh --preset quality
-train-krea2-character.sh --preset attention
 ```
 
 For a 10 GB card, use its separate preparation command:
@@ -132,8 +132,44 @@ caption changes.
 train-krea2-character.sh
 ```
 
-The default run trains for 1,800 steps and generates a checkpoint plus fixed-seed
-Turbo previews every 200 steps.
+The default run uses rank-64 attention-only adaptation for an 8,000-step search
+horizon. It generates a step-numbered checkpoint plus fixed-seed Turbo previews
+every 400 steps, giving 20 periodic candidates.
+
+Before Accelerate starts, the launcher reports the effective target modules,
+rank, learning rate, dataset shape, batch settings, horizon, estimated dataset
+passes, and checkpoint counts. For the standard 30-image layout, the default
+summary includes:
+
+```text
+Krea2 training search horizon
+
+Preset:                         default
+Target modules:                 attention-only
+Rank / alpha:                   64 / 64
+Learning rate:                  5e-5
+
+Primary paired images:          30
+Per-device batch size:          1
+Gradient accumulation:          1
+Effective single-GPU batch:     1
+
+Maximum optimizer steps:        8000
+Estimated maximum passes:       266.7
+Checkpoint interval:            400
+Periodic checkpoint candidates: 20
+Final checkpoint:               duplicates step 8000
+Unique candidate states:        20
+Sample interval:                400
+Resumable-state window:         800 steps
+```
+
+The estimate is authoritative only for one directory-backed dataset with a
+resolved batch size and complete same-basename caption pairs. A JSONL primary,
+an enabled regularization dataset, or another custom multi-dataset layout is
+valid, but the launcher reports its simple pass estimate as unavailable.
+For an authoritative standard layout, it warns without blocking when the
+primary count is outside the presets' intended 20-40 image range.
 
 ### 7. Inspect the results
 
@@ -152,27 +188,29 @@ tensorboard --logdir /musubi/output/krea2-character
 
 Do not assume the final checkpoint is best. Compare the saved previews and
 prefer the earliest checkpoint that has reliable identity without excessive
-clothing, pose, or background bias.
+clothing, pose, or background bias. A run is comfortably long enough when at
+least four later periodic checkpoints fail to improve the overall
+identity/control trade-off.
 
 ## Other presets
 
-The default, quality, and attention presets all require the shared 1024-pixel
+The default, baseline, and quality presets all require the shared 1024-pixel
 cache. Prepare once, then run any of them:
 
 ```shell
 prepare-krea2-character.sh
 
 train-krea2-character.sh
+train-krea2-character.sh --preset baseline
 train-krea2-character.sh --preset quality
-train-krea2-character.sh --preset attention
 ```
 
-| Preset | Intended hardware | Resolution | Targets | Rank/alpha | Steps | Output directory |
-| --- | --- | --- | --- | --- | --- | --- |
-| `default` | 32 GB VRAM | 1024 | All Linear layers | 32/32 | 1,800 | `output/krea2-character` |
-| `quality` | 32 GB VRAM | 1024 | All Linear layers | 64/64 | 2,700 | `output/krea2-character/quality` |
-| `attention` | 32 GB VRAM | 1024 | Attention projections | 64/64 | 3,600 | `output/krea2-character/attention` |
-| `10gb` | 10 GB VRAM | 640 | Attention projections | 16/16 | 800 | `output/krea2-character/10gb` |
+| Preset | Hardware | Resolution | Targets | Rank/alpha | Horizon | Checkpoint / sample | State window | Output directory |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `default` | 32 GB | 1024 | Attention projections | 64/64 | 8,000 | 400 / 400 | 800 | `output/krea2-character` |
+| `baseline` | 32 GB | 1024 | All Linear layers | 32/32 | 4,000 | 200 / 200 | 400 | `output/krea2-character/baseline` |
+| `quality` | 32 GB | 1024 | All Linear layers | 64/64 | 6,000 | 300 / 300 | 600 | `output/krea2-character/quality` |
+| `10gb` | 10 GB | 640 | Attention projections | 16/16 | 800 | 100 / disabled | None | `output/krea2-character/10gb` |
 
 The 10 GB preset needs its own resolution-specific cache:
 
@@ -226,6 +264,7 @@ train-krea2-character.sh --max_train_steps 2000
 | --- | --- |
 | Trigger validation fails | Put the exact identity token from `# trigger:` in every primary caption and active sample prompt |
 | Images or captions changed | Run `prepare-krea2-character.sh` again before training |
+| Pass estimate is unavailable | Custom JSONL and multi-dataset layouts cannot be represented by the simple primary-directory estimate |
 | 32 GB run is out of memory | Close other GPU applications; use the `10gb` preset if necessary |
 | 10 GB run is out of memory | Lower `resolution` in `dataset-10gb.toml`, then rerun 10 GB preparation |
 | Training was interrupted | Resume the saved state with the same preset and `--resume` |
@@ -241,8 +280,8 @@ Initialization scaffolds the following persisted structure:
 dataset/krea2/
     dataset.toml
     train.toml
+    train-baseline.toml
     train-quality.toml
-    train-attention.toml
     dataset-10gb.toml
     train-10gb.toml
     samples.txt
@@ -251,8 +290,8 @@ dataset/krea2/
     cache-10gb/
 output/krea2-character/
     logs/
+    baseline/logs/
     quality/logs/
-    attention/logs/
     10gb/logs/
 ```
 
@@ -324,21 +363,34 @@ Image and caption existence checks still run when trigger checking is skipped.
 
 The three 32 GB presets keep the dataset, 1024-pixel resolution, seed, BF16
 precision, scaled FP8 base weights, gradient checkpointing, SDPA, constant
-scheduler, AdamW8bit, checkpoint cadence, and Turbo preview pack fixed.
+scheduler, AdamW8bit, and Turbo preview pack fixed.
 
 The differences are deliberate:
 
-- `default` is the rank-32 reference run at `1e-4` for 1,800 steps.
-- `quality` doubles all-linear rank to 64, lowers LR to `7e-5`, and runs for
-  2,700 steps.
-- `attention` uses rank 64 at `5e-5`, narrows training to 140 attention
-  projections, and runs for 3,600 steps to preserve prompt adherence during a
-  longer experiment.
+- `default` uses rank 64 at `5e-5` and narrows training to 140 attention
+  projections for an 8,000-step, prompt-control-oriented search.
+- `baseline` is the compact rank-32 all-linear reference at `1e-4` for 4,000
+  steps.
+- `quality` uses rank-64 all-linear capacity at `7e-5` for 6,000 steps.
 
-With 30 images and batch size 1, those are approximately 60, 90, and 120
-dataset passes. All save checkpoints, state, and fixed-seed Turbo previews
-every 200 steps. Frequent saves are intentional because later checkpoints may
-strengthen likeness while weakening prompt control.
+With 30 images, per-device batch size 1, and gradient accumulation 1, those
+horizons are approximately 266.7, 133.3, and 200.0 passes for `default`,
+`baseline`, and `quality`. They save and sample every 400, 200, and 300 steps
+respectively, giving exactly 20 step-numbered candidate checkpoints each.
+Their similar interval-times-learning-rate values are incidental engineering
+symmetry for checkpoint spacing, not evidence for the horizon lengths.
+
+The three 32 GB templates intentionally omit `save_last_n_steps`, so every
+periodic LoRA checkpoint remains available. Musubi also writes one unsuffixed
+model at normal completion. Because each bundled horizon is divisible by its
+checkpoint interval, that file duplicates the twentieth periodic training
+state: there are 21 model files but 20 unique trained states.
+
+Resumable state is separate and much larger. The `save_last_n_steps_state`
+values are rolling windows measured in steps, not counts of state directories;
+the default, baseline, and quality windows are 800, 400, and 600 steps
+respectively. They retain only recent recovery points while model checkpoint
+deletion remains disabled.
 
 All 32 GB presets use Musubi's resolution-aware `krea2_shift` schedule. The
 shared dataset keeps 1024 buckets enabled with `bucket_no_upscale = true`.
@@ -376,9 +428,7 @@ rank and alpha in `train-10gb.toml` is another fallback.
 ### F. Persistence, overrides, and automatic names
 
 Initialization deliberately preserves existing TOMLs. Rerunning it installs
-missing templates but does not overwrite edits or automatically apply newer
-template defaults to an existing workflow. Compare an old persisted TOML with
-the bundled template when adopting changed defaults.
+missing templates but does not overwrite edits.
 
 The same preservation rule applies to `samples.txt`. Supplying `--trigger`
 updates its detected trigger without replacing customized prompts, so migrations
@@ -386,7 +436,11 @@ from a combined trigger/class phrase may need a one-time manual prompt edit.
 
 The launcher forwards all arguments except its own `--preset` selector to
 Musubi, so command-line values override the selected TOML. This includes model
-paths, output paths, step counts, configuration files, and `--resume`.
+paths, output paths, step counts, save/sample cadence, accumulation, network
+settings, configuration files, and `--resume`. The printed planning summary
+uses those effective values. If the horizon is not divisible by its checkpoint
+interval, the unsuffixed final model is reported as one additional unique
+state.
 
 Unless `--output_name` is supplied, the launcher reads the trigger from
 `samples.txt` and inserts it into the configured name. With `k2v9`, the default
@@ -394,10 +448,14 @@ names are:
 
 ```text
 krea2-k2v9-character-lora
+krea2-k2v9-character-lora-baseline
 krea2-k2v9-character-lora-quality
-krea2-k2v9-character-lora-attention
 krea2-k2v9-character-lora-10gb
 ```
+
+The output tree must outlive an ephemeral training VM. Mount it from persistent
+storage or copy checkpoints away while the VM is running; this wrapper does not
+yet configure remote checkpoint upload or remote resume.
 
 ### G. Why RAW training and Turbo previews
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import re
@@ -159,6 +160,140 @@ def active_sample_prompts(samples_text: str) -> list[tuple[int, str, bool]]:
     return prompts
 
 
+def load_dataset_config(dataset_config_path: Path):
+    """Load a Musubi dataset config and its canonical image discovery helper."""
+    try:
+        import toml
+        from musubi_tuner.dataset.media_utils import glob_images
+    except ImportError as error:
+        raise TriggerWordsError(
+            "Dataset operations require Musubi Tuner and its Python dependencies."
+        ) from error
+
+    return toml.load(str(dataset_config_path)), glob_images
+
+
+def resolved_dataset_value(
+    dataset: dict[str, object], general: dict[str, object], key: str
+):
+    """Resolve a dataset value using Musubi's dataset-over-general precedence."""
+    value = dataset.get(key)
+    return general.get(key) if value is None else value
+
+
+def supported_images(dataset: dict[str, object], glob_images) -> list[str]:
+    """Return the Musubi-supported images for an image-directory dataset."""
+    image_directory = dataset.get("image_directory")
+    if not isinstance(image_directory, str) or not image_directory:
+        return []
+    return glob_images(os.path.abspath(image_directory))
+
+
+def inspect_dataset(dataset_config_path: Path) -> dict[str, object]:
+    """Describe whether a simple primary-dataset pass estimate is authoritative."""
+    config, glob_images = load_dataset_config(dataset_config_path)
+    general = config.get("general", {})
+    datasets = config.get("datasets", [])
+    if not isinstance(general, dict):
+        general = {}
+    if not isinstance(datasets, list) or not datasets:
+        raise TriggerWordsError(f"No datasets are configured in {dataset_config_path}")
+
+    primary = datasets[0]
+    if not isinstance(primary, dict):
+        raise TriggerWordsError(
+            f"Dataset 1 in {dataset_config_path} is not a TOML table."
+        )
+
+    additional_dataset_count = len(datasets) - 1
+    batch_size_value = resolved_dataset_value(primary, general, "batch_size")
+    per_device_batch_size = (
+        batch_size_value
+        if isinstance(batch_size_value, int)
+        and not isinstance(batch_size_value, bool)
+        and batch_size_value > 0
+        else None
+    )
+    result: dict[str, object] = {
+        "layout": "custom",
+        "primary_image_count": None,
+        "additional_dataset_count": additional_dataset_count,
+        "per_device_batch_size": per_device_batch_size,
+        "caption_pairs_complete": None,
+        "estimate_authoritative": False,
+        "estimate_unavailable_reason": "custom dataset configuration",
+    }
+
+    image_directory = primary.get("image_directory")
+    image_jsonl_file = primary.get("image_jsonl_file")
+    if isinstance(image_jsonl_file, str) and image_jsonl_file:
+        result["layout"] = "jsonl"
+        result["estimate_unavailable_reason"] = (
+            "primary dataset uses image_jsonl_file"
+        )
+        return result
+
+    if not isinstance(image_directory, str) or not image_directory:
+        result["estimate_unavailable_reason"] = (
+            "primary dataset does not use image_directory"
+        )
+        return result
+
+    image_directory = os.path.abspath(image_directory)
+    if not os.path.isdir(image_directory):
+        raise TriggerWordsError(
+            f"Dataset 1 image directory does not exist: {image_directory}"
+        )
+
+    images = supported_images(primary, glob_images)
+    if not images:
+        raise TriggerWordsError(
+            f"Dataset 1 has no supported training images: {image_directory}"
+        )
+    result["primary_image_count"] = len(images)
+
+    if additional_dataset_count:
+        result["layout"] = "multi-dataset"
+        result["estimate_unavailable_reason"] = "multi-dataset configuration"
+        return result
+
+    caption_extension = resolved_dataset_value(
+        primary, general, "caption_extension"
+    )
+    if not isinstance(caption_extension, str) or not caption_extension:
+        result["estimate_unavailable_reason"] = (
+            "caption extension is not configured"
+        )
+        return result
+    if per_device_batch_size is None:
+        result["estimate_unavailable_reason"] = (
+            "per-device batch size is not a positive integer"
+        )
+        return result
+
+    missing_captions = [
+        os.path.splitext(image_path)[0] + caption_extension
+        for image_path in images
+        if not os.path.isfile(os.path.splitext(image_path)[0] + caption_extension)
+    ]
+    if missing_captions:
+        details = "\n".join(
+            f"Missing caption for dataset 1 training image: {caption_path}"
+            for caption_path in missing_captions
+        )
+        raise TriggerWordsError(details)
+
+    result.update(
+        {
+            "layout": "standard-directory",
+            "caption_pairs_complete": True,
+            "estimate_authoritative": True,
+            "estimate_unavailable_reason": None,
+        }
+    )
+    return result
+
+
 def validate_dataset(
     dataset_config_path: Path,
     samples_path: Path | None,
@@ -166,15 +301,7 @@ def validate_dataset(
     skip_trigger_check: bool,
 ) -> None:
     """Validate Musubi image/caption datasets and their trigger-word usage."""
-    try:
-        import toml
-        from musubi_tuner.dataset.media_utils import glob_images
-    except ImportError as error:
-        raise TriggerWordsError(
-            "Dataset validation requires Musubi Tuner and its Python dependencies."
-        ) from error
-
-    config = toml.load(str(dataset_config_path))
+    config, glob_images = load_dataset_config(dataset_config_path)
     general = config.get("general", {})
     datasets = config.get("datasets", [])
     errors: list[str] = []
@@ -228,15 +355,15 @@ def validate_dataset(
                 )
                 continue
 
-            images = glob_images(image_directory)
+            images = supported_images(dataset, glob_images)
             if not images:
                 errors.append(
                     f"Dataset {index} has no supported training images: {image_directory}"
                 )
                 continue
 
-            caption_extension = dataset.get(
-                "caption_extension", general.get("caption_extension")
+            caption_extension = resolved_dataset_value(
+                dataset, general, "caption_extension"
             )
             if caption_extension:
                 for image_path in images:
@@ -325,6 +452,11 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("--trigger")
     validate_parser.add_argument("--skip-trigger-check", action="store_true")
 
+    inspect_parser = subparsers.add_parser(
+        "inspect", help="print structured dataset planning information as JSON"
+    )
+    inspect_parser.add_argument("--dataset-config", required=True, type=Path)
+
     return parser
 
 
@@ -353,6 +485,8 @@ def main(argv: list[str] | None = None) -> int:
                 args.trigger,
                 args.skip_trigger_check,
             )
+        elif args.command == "inspect":
+            print(json.dumps(inspect_dataset(args.dataset_config), sort_keys=True))
         else:  # pragma: no cover - argparse enforces a known subcommand.
             raise AssertionError(f"Unhandled command: {args.command}")
     except (OSError, UnicodeError, TriggerWordsError) as error:
